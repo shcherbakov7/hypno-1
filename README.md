@@ -1,3 +1,7 @@
+> **HYPNO-1** (work in progress): a fork of SLOOP for raw hypnotic acid techno, with eight tracks, a 303,
+> sidechain, long modulation and a DICE beat generator. The plan is in [HYPNO-1.md](HYPNO-1.md); run the
+> firmware on the computer with `tools/emu.sh`. Everything below is SLOOP's own README, kept until HYPNO-1 ships.
+
 <p align="center"><img src="assets/logo/sloop-logo.png" alt="SLOOP" width="420"></p>
 
 <p align="center"><b>A live groovebox firmware for the M-VAVE FM-1 — for any style.</b><br>
