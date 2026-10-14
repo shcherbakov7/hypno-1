@@ -115,6 +115,17 @@ static void dstep_clr(dstep_t *s, uint32_t l)                                /* 
     s->rat[b] &= (uint8_t)~(3u << sh);
 }
 
+/* HYPNO-1: the drum track's lanes in four groups, the tracks KICK, RUMBLE, HATS and PERC. Each group loops over
+ * its own length of the drum track's steps, so hats on 12 steps drift against a kick on 16 (seq.c drum_compose).
+ * The lengths are the drum track's P_E1..P_E4 (P_E0 is its kit, the others were unused): projects, the editor and
+ * undo keep them as they are, and older projects hold 0 there, which means the track's LEN: they play as before */
+enum { DG_KICK, DG_RUMBLE, DG_HATS, DG_PERC, DG_COUNT };
+#define P_DGLEN (P_E0 + 1)       /* P_DGLEN + group: its loop length, 0 = the track's LEN */
+static const uint8_t LANE_GROUP[DRUM_LANES] = {
+    DG_KICK, DG_RUMBLE, DG_PERC, DG_PERC, DG_HATS, DG_HATS, DG_HATS, DG_PERC,   /* kick, kick 2, snare, clap, hats, rim */
+    DG_PERC, DG_PERC, DG_PERC, DG_PERC, DG_HATS, DG_HATS, DG_PERC, DG_PERC};    /* snare 2, toms, crash, ride, shaker.. */
+static const char *const DG_NAME[DG_COUNT] = {"KICK", "RUMBLE", "HATS", "PERC"};
+
 /* the zone a sampled drum voice plays (drum_on: v->s[4]): SMP_ZONES[i], or a user kit's, DZ_USR + slot * 16 + zone */
 #define DZ_USR (1 << 16)                 /* (above every SMP_ZONES index) */
 static const smp_zone_t *drum_zone_of(const voice_t *v)

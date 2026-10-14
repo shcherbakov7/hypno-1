@@ -198,6 +198,12 @@ static const param_desc_t GP[G_COUNT] = {
 };
 
 static const param_desc_t DRUM_KIT_DESC = PE("KIT", DRUM_KIT_NAMES, 0);
+static const param_desc_t DRUM_GLEN_DESC = {"LEN", F_INT, 0, NSTEP, 0, 0, 0};   /* a lane group's loop, 0 = the track's */
+/* the drum track's own parameters (drums.c): P_E0 its kit, P_DGLEN.. its lane groups' loop lengths; 0 = none */
+static const param_desc_t *drum_pdesc(uint32_t id)
+{
+    return id == P_E0 ? &DRUM_KIT_DESC : id >= P_DGLEN && id < P_DGLEN + DG_COUNT ? &DRUM_GLEN_DESC : 0;
+}
 /* the INSERT's A B C as its TYPE means them (TP's ranges and defaults): the drives DRIVE TONE LEVEL, CRUSH BITS RATE
  * LPF, the swept ones RATE DEPTH FDBK; OFF TP's own */
 #define PU(l, f, df, n, u) {l, f, 0, 127, df, n, u}
@@ -221,8 +227,8 @@ static const param_desc_t ESYNC_DESC[3] = {   /* ATK DEC REL with ENV SYNC on: t
 
 static const param_desc_t *track_desc(const track_t *t, uint32_t id)
 {
-    if(is_drum(t) && id==P_E0) return &DRUM_KIT_DESC;
-    if (id >= P_IA && id <= P_IC)                     /* the INSERT's values as its TYPE names them */
+    if (is_drum(t) && drum_pdesc(id)) return drum_pdesc(id);
+    if (id >= P_IA && id <= P_IC)                   /* the INSERT's values as its TYPE names them */
         return ins_desc(t->p[P_ITYPE], id - P_IA);
     if (t->p[P_ESYNC] && (id == P_ATK || id == P_DEC || id == P_REL))   /* ENV SYNC: note values */
         return &ESYNC_DESC[id == P_ATK ? 0 : id == P_DEC ? 1 : 2];

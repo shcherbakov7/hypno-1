@@ -367,7 +367,7 @@ static void ed_sync(void)                                /* main loop */
  * (t->engine follows in the audio ISR, after a short fade) */
 static const param_desc_t *ed_tdesc(const track_t *t, uint32_t id)   /* the static ones: an engine's */
 {                                                                     /* desc hook is the device display only */
-    if(is_drum(t) && id==P_E0) return &DRUM_KIT_DESC;
+    if (is_drum(t) && drum_pdesc(id)) return drum_pdesc(id);
     if (id >= P_E0 && id <= P_E7)
         return &ENGINES[t->eng_req % NENGINES]->edit[id - P_E0];
     return &TP[id];

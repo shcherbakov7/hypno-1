@@ -460,7 +460,7 @@ static void proj_apply(const project_t *p, int all)
         t->user = 0;                                    /* (no user preset slot is saved) */
         t->lk_n = 0;                                    /* (the locks in force: the values come from the project) */
         for (i = 0; i < P_COUNT; i++) {                 /* every value back inside its range */
-            const param_desc_t *d = k == TRK_DRUM && i == P_E0 ? &DRUM_KIT_DESC :   /* the drum kit */
+            const param_desc_t *d = k == TRK_DRUM && drum_pdesc(i) ? drum_pdesc(i) :   /* the kit, the group loops */
                                     i >= P_E0 && i <= P_E7 ? &ENGINES[e]->edit[i - P_E0] : &TP[i];
             t->p[i] = (int16_t)clamp(pt_get(s, i), d->min, d->max);
         }
@@ -477,7 +477,7 @@ static void proj_apply(const project_t *p, int all)
             const plock_t *l = &s->lock[i];
             uint32_t id = l->param;
             if (l->step < NSTEP && id < P_COUNT && p_lockable(id)) {
-                const param_desc_t *d = k == TRK_DRUM && id == P_E0 ? &DRUM_KIT_DESC :
+                const param_desc_t *d = k == TRK_DRUM && drum_pdesc(id) ? drum_pdesc(id) :
                                         id >= P_E0 && id <= P_E7 ? &ENGINES[e]->edit[id - P_E0] : &TP[id];
                 t->lock[i].step = l->step;
                 t->lock[i].param = (uint8_t)id;

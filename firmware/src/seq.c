@@ -439,6 +439,24 @@ static uint32_t trk_grid(const track_t *t, uint32_t *into, uint32_t *len)
     return grid_at(div, swings(div) ? swing_units(t->p[P_SSWING] + song.g[G_SWING], div_units(div)) : 0u, into, len);
 }
 static uint32_t trk_len(const track_t *t) { return t->p[P_SLEN] > 0 ? (uint32_t)t->p[P_SLEN] : 1u; }
+/* the loop length of drum lane l: its group's (drums.c), else the track's */
+static uint32_t lane_len(const track_t *t, uint32_t l)
+{
+    int32_t g = t->p[P_DGLEN + LANE_GROUP[l % DRUM_LANES]];
+    return g > 0 ? (uint32_t)clamp(g, 1, NSTEP) : trk_len(t);
+}
+/* the drum step heard at grid step abs: each lane from its group's own loop */
+static void drum_compose(const track_t *t, uint32_t abs, dstep_t *d)
+{
+    uint32_t l;
+    memset(d, 0, sizeof *d);
+    for (l = 0; l < DRUM_LANES; l++) {
+        const dstep_t *s = &t->dstep[abs % lane_len(t, l) % NSTEP];
+        if (dstep_has(s, l))
+            dstep_set(d, l, dstep_lvl(s, l), dstep_rat(s, l));
+    }
+}
+static dstep_t drum_now;         /* the drum step playing, composed (its ratchets: seq_ratchets) */
 
 /* ------------------------------------------------------------- undo --- */
 /* One step back (and forward again) for the pattern of one track: what it was before the last
@@ -546,7 +564,7 @@ static void rec_hit(track_t *t, uint32_t lane, uint32_t lvl, uint32_t rat)
 {
     uint32_t later, abs = rec_target(t, &later);
     undo_mark(t, UNDO_REC(t));
-    dstep_set(&t->dstep[abs % trk_len(t)], lane, lvl, rat);
+    dstep_set(&t->dstep[abs % lane_len(t, lane) % NSTEP], lane, lvl, rat);
     t->seq_active = 1;
     if (later) {
         if (t->rskip_abs != abs)
@@ -675,8 +693,8 @@ static int p_lockable(uint32_t id)
 /* the range of p[id] on track t (the engine that renders: t->engine; the drum track's P_E0: the kit) */
 static const param_desc_t *lock_desc(const track_t *t, uint32_t id)
 {
-    if (is_drum(t) && id == P_E0)
-        return &DRUM_KIT_DESC;
+    if (is_drum(t) && drum_pdesc(id))
+        return drum_pdesc(id);
     if (id >= P_E0 && id <= P_E7)
         return &ENGINES[t->engine % NENGINES]->edit[id - P_E0];
     return &TP[id % P_COUNT];
@@ -1005,12 +1023,28 @@ static void erase_step(track_t *t, uint32_t idx)
         }
     }
 }
+/* playing: the step passing now, on the drum track each held lane at its group's step */
+static void erase_playing(track_t *t)
+{
+    uint32_t l, m;
+    if (!is_drum(t)) {
+        erase_step(t, t->seq_idx % trk_len(t));
+        return;
+    }
+    for (l = 0, m = er_lanes; m; l++, m >>= 1) {
+        dstep_t *s = &t->dstep[t->seq_abs % lane_len(t, l) % NSTEP];
+        if ((m & 1u) && dstep_has(s, l)) {
+            dstep_clr(s, l);
+            er_flash = 1;
+        }
+    }
+}
 static void erase_now(track_t *t)             /* a key just went down */
 {
-    uint32_t i, len = trk_len(t);
+    uint32_t i, len = is_drum(t) ? NSTEP : trk_len(t);   /* (stopped, the drums: a group may loop past LEN) */
     undo_mark(t, undo_erase_sess);
     if (song.playing && t->seq_abs != SEQ_NONE) {
-        erase_step(t, t->seq_idx % len);
+        erase_playing(t);
     } else {
         for (i = 0; i < len; i++)
             erase_step(t, i);
@@ -1982,7 +2016,7 @@ static void seq_ratchets(track_t *t, uint32_t into, uint32_t slen)
     if (t->seq_skip)
         return;                                     /* (its condition failed: no hit at all) */
     if (is_drum(t)) {
-        const dstep_t *s = &t->dstep[t->seq_idx % NSTEP];
+        const dstep_t *s = &drum_now;
         uint32_t m = dstep_mask(s) & ~roll_lanes(t) & ~(uint32_t)drum_mute;
         for (i = 0; m; i++, m >>= 1) {
             uint32_t hits = 1u + dstep_rat(s, i), h, done;
@@ -2080,7 +2114,7 @@ static void seq_tick(track_t *t, uint32_t adv)
         if (!idx)
             t->pass++;                               /* a new pass of the loop (recording: one undo) */
         if (erasing(t))
-            erase_step(t, idx);                      /* EDIT + key held: gone as it passes */
+            erase_playing(t);                        /* EDIT + key held: gone as it passes */
         t->seq_skip = (uint8_t)!step_plays(t, idx);
         if (t->seq_skip) {                           /* its fill condition fails: as a REST with no lock */
             lock_step(t, NSTEP);                     /* (no step has locks there: the bases are back) */
@@ -2096,7 +2130,8 @@ static void seq_tick(track_t *t, uint32_t adv)
             uint32_t skip = t->rskip_abs == nabs ? t->rskip_lanes : 0u;
             lock_step(t, idx);                       /* its parameter locks, before the block renders */
             t->rskip_lanes = 0;
-            drum_step(t, &t->dstep[idx], skip);
+            drum_compose(t, nabs, &drum_now);        /* (each lane group on its own loop) */
+            drum_step(t, &drum_now, skip);
         } else {
             const step_t *s = &t->step[idx];
             uint32_t skip = 0, i, k;
@@ -2235,8 +2270,8 @@ static void sus_set(track_t *t, int on)
 }
 static void midi_cc_set(track_t *t, uint32_t id, uint32_t value)
 {
-    const param_desc_t *d = is_drum(t) && id == P_E0 ? &DRUM_KIT_DESC
-                            : id >= P_E0 ? &ENGINES[t->eng_req % NENGINES]->edit[(id - P_E0) & 7u] : &TP[id % P_COUNT];
+    const param_desc_t *d = is_drum(t) && drum_pdesc(id) ? drum_pdesc(id)
+                            : id >= P_E0 ?&ENGINES[t->eng_req % NENGINES]->edit[(id - P_E0) & 7u] : &TP[id % P_COUNT];
     if (d->max > d->min)
         t->p[id % P_COUNT] = (int16_t)(d->min + ((int32_t)(value & 127u) * (d->max - d->min) + 63) / 127);
 }
