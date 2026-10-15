@@ -218,8 +218,9 @@ static void vis_update(void)
     /* the tracks' peaks since the last look (as the TRACKS meters take them) and the notes that started */
     fm1_irq_off();
     for (i = 0; i < NPART; i++) {
-        pk[i] = trk[i].peak;
-        trk[i].peak = 0;
+        if (i < 3u)
+            pk[i] = trk[i].peak;
+        trk[i].peak = 0;                            /* (HYPNO-1: the fourth part's too, not shown) */
     }
     pk[3] = drums.peak;
     drums.peak = 0;
@@ -231,7 +232,8 @@ static void vis_update(void)
     }
     fm1_irq_on();
     for (i = 0; i < 4u; i++) {
-        int32_t v = trk_level(i) && !trk[i].p[P_MUTE] ? vis_lvl(pk[i]) : 0;   /* (as the TRACKS meters) */
+        uint32_t vt = i < 3u ? i : TRK_DRUM;         /* (its four: parts 1..3, the drums) */
+        int32_t v = trk_level(vt) && !trk[vt].p[P_MUTE] ? vis_lvl(pk[i]) : 0;   /* (as the TRACKS meters) */
         vs.lvl[i] = (int16_t)v;
         if ((hit >> i) & 1u) {
             vs.flash[i] = 8;

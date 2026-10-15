@@ -23,13 +23,12 @@ static inline int32_t soft_knee(int32_t y, int32_t k)   /* linear up to k, then 
 #include "eng_sample.c"
 #include "eng_formant.c"
 #include "eng_trio.c"
-#include "eng_drawbar.c"
 #include "eng_fm6.c"            /* FM6: 6-operator FM, msfa ported (fm6_core.c, Apache-2.0); SLOOP 2.4 */
 #include "eng_noise.c"          /* NOISE: from Felucca 1.0; SLOOP 2.5 */
 
 /* HYPNO-1: GRAIN (eng_grain.c) and PHYS (eng_phys.c) are not built: their state took 7.1 and 8.6 KB of the arena a
- * part, FM6 needs 1.8, and the RAM goes to the fourth synth part. Their engine numbers stay (ENGINES[]): a project or
- * user preset that has one plays ANALOG (eng_live) */
+ * part, FM6 needs 1.8, and the RAM goes to the fourth synth part; nor is WHEEL (eng_drawbar.c, 2.9 KB of RAM for its
+ * voices). Their engine numbers stay (ENGINES[]): a project or user preset that has one plays ANALOG (eng_live) */
 typedef union {
     fm6_note_t fm6[FM6_POLY];
 } eng_arena_t;
@@ -61,7 +60,8 @@ static void *eng_arena_of(const track_t *t, uint32_t eng)
 #endif
 
 static const engine_t *const ENGINES[NENGINES] = {&ENG_ANALOG, &ENG_DIGITAL, &ENG_PHASE, &ENG_LOFI, &ENG_SAMPLE,
-                                                    &ENG_FORMANT, &ENG_TRIO, &ENG_DRAWBAR,
+                                                    &ENG_FORMANT, &ENG_TRIO,
+                                                    &ENG_ANALOG, /* 7 (WHEEL, the drawbar organ): retired in HYPNO-1 */
                                                     &ENG_ANALOG, /* 8 (ENGI_GRAIN): retired in HYPNO-1 */
                                                     &ENG_FM6,    /* 9 (ENGI_FM6): always; SLICE after it (core.h) */
                                                     &ENG_ANALOG, /* 10 (ENGI_PHYS): retired in HYPNO-1 */
@@ -72,7 +72,8 @@ static const engine_t *const ENGINES[NENGINES] = {&ENG_ANALOG, &ENG_DIGITAL, &EN
 };
 _Static_assert(ENGI_FM6 == 9u, "ENGINES[ENGI_FM6] is FM6");
 _Static_assert(ENGI_GRAIN == 8u && ENGI_PHYS == 10u && ENGI_NOISE == 11u && ENGI_SLICE == 12u, "ENGINES[] order");
-static int eng_retired(uint32_t e) { return e == ENGI_GRAIN || e == ENGI_PHYS; }
+#define ENGI_WHEEL 7u
+static int eng_retired(uint32_t e) { return e == ENGI_WHEEL || e == ENGI_GRAIN || e == ENGI_PHYS; }
 /* an engine number from a project, a user preset or the editor: a retired one plays ANALOG */
 static uint32_t eng_live(uint32_t e) { return eng_retired(e % NENGINES) ? 0u : e % NENGINES; }
 

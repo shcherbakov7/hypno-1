@@ -392,14 +392,21 @@ static void mono_remove(track_t *t, uint32_t note)
 static volatile uint32_t note_hits[NPART][4];
 /* the visualiser (ui_vis.c): the tracks a note started on (bit per track), each one's last note, a kick */
 static volatile uint8_t vis_hit, vis_kick_hit, vis_note[NTRK];
+/* the visualiser's four (ui_vis.c): parts 1..3 and the drums; HYPNO-1's fourth part is not among them (4) */
+static uint32_t vis_slot(uint32_t i) { return i < 3u ? i : i == TRK_DRUM ? 3u : 4u; }
 
 static void trk_note_on(track_t *t, uint32_t note, uint32_t vel)
 {
     uint32_t any = 0, i, mode = (uint32_t)t->p[P_VOICE];
     if (trk_silent(t))
         return;                                         /* MUTE, or another track soloed */
-    vis_hit |= (uint8_t)(1u << ((uint32_t)(t - trk) & 3u));
-    vis_note[(uint32_t)(t - trk) & 3u] = (uint8_t)note;
+    {
+        uint32_t s = vis_slot((uint32_t)(t - trk));
+        if (s < 4u) {
+            vis_hit |= (uint8_t)(1u << s);
+            vis_note[s] = (uint8_t)note;
+        }
+    }
     if (is_drum(t)) {                                   /* the drum track: GM drums (drums.c) */
         if (note == 35u || note == 36u)
             vis_kick_hit = 1;

@@ -21,7 +21,10 @@
  * (upreset.c); the working project (autosave, project.c): copy A 0x9F000, copy B 0xFE000 (the two sectors
  * left: A/B needs no two neighbours); the FM6 patch bank (fm6_bank.c, SLOOP 2.4): 0xE5000 / 0xE6000, the first
  * two sectors of the free 0xE5000..0xFBFFF after the update staging (FL_FM6, fm1_flash.h) */
-enum { OBJ_SETTINGS, OBJ_PROJECT0, OBJ_UPRESET0 = OBJ_PROJECT0 + 4, OBJ_AUTOSAVE = OBJ_UPRESET0 + 2, OBJ_FM6BANK, OBJ_COUNT };
+/* HYPNO-1: the fourth synth part of the four project slots (OBJ_PROJX) and of the working project (OBJ_AUTOX),
+ * project.c proj_x_t: 0xF8000 / 0xF9000 and 0xFA000 / 0xFB000, the 12 KiB USR4 gave up and the sector after it */
+enum { OBJ_SETTINGS, OBJ_PROJECT0, OBJ_UPRESET0 = OBJ_PROJECT0 + 4, OBJ_AUTOSAVE = OBJ_UPRESET0 + 2, OBJ_FM6BANK, OBJ_PROJX,
+       OBJ_AUTOX, OBJ_COUNT };
 
 typedef struct {
     uint32_t magic;
@@ -57,6 +60,8 @@ static uint32_t st_sector(uint32_t obj, uint32_t copy)  /* flash offset of copy 
         return copy ? 0xFE000u : 0x9F000u;
     if (obj == OBJ_FM6BANK)
         return 0xE5000u + copy * ST_SECTOR;
+    if (obj == OBJ_PROJX || obj == OBJ_AUTOX)
+        return 0xF8000u + (obj - OBJ_PROJX) * 2u * ST_SECTOR + copy * ST_SECTOR;
     if (obj >= OBJ_UPRESET0 && obj < OBJ_AUTOSAVE)
         return 0xDC000u + (obj - OBJ_UPRESET0) * 2u * ST_SECTOR + copy * ST_SECTOR;
     return 0x97000u + (obj - OBJ_PROJECT0) * 2u * ST_SECTOR + copy * ST_SECTOR;

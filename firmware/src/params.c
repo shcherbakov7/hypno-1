@@ -174,7 +174,8 @@ static const param_desc_t GP[G_COUNT] = {
     [G_ENGGO] = PE("SET", N_GO, 0),
     [G_CLRSEQ] = PE("CLRSQ", N_GO, 0),
     [G_INITSND] = PE("INIT", N_GO, 0),
-    [G_DRCH] = PE("CH4", N_MCH, 10),                  /* GM drum part (track 4) MIDI channel, 0 = OFF (2.6: as GLO > MIDI's CH1..3) */
+    [G_DRCH] = PE("CH D", N_MCH, 10),                 /* the drum track's MIDI channel, 0 = OFF (HYPNO-1: on DRUMS only;
+                                                       * GLO > MIDI holds CH1..CH4, the synth tracks') */
     [G_DRLVL] = PD("LVL", F_INT, 0, 127, 100),
     [G_DRREV] = PD("REV", F_INT, 0, 127, 16),
     [G_DUST] = PD("DUST", F_PCT, 0, 127, 0),
@@ -194,7 +195,8 @@ static const param_desc_t GP[G_COUNT] = {
     [G_TXRATE] = PE("RATE", N_TXRATE, 2),
     [G_TXWHEN] = PE("WHEN", N_TXWHEN, 0),         /* PLAY: while the transport runs (fades in / out); ALWAYS */
     [G_TXDUCK] = PE("DUCK", N_ONOFF, 0),          /* ON: the kick pumps it too (GLO > MASTER > DUCK) */
-    [G_BEND] = PD("BEND", F_SEMI, 1, 12, 2),      /* 2.6, GLO > MIDI 2: MIDI pitch bend's range (a setting of the FM-1) */
+    [G_BEND] = PD("BEND", F_SEMI, 1, 12, 2),
+    [G_CH4] = PE("CH4", N_MCH, 4),                /* HYPNO-1: synth track 4's channel */      /* 2.6, GLO > MIDI 2: MIDI pitch bend's range (a setting of the FM-1) */
 };
 
 static const param_desc_t DRUM_KIT_DESC = PE("KIT", DRUM_KIT_NAMES, 0);
@@ -416,7 +418,7 @@ static const page_t PAGES[] = {
     {"MASTER", FAM_GLO, SC_GLOBAL, GR_NONE, {G_DUST, G_DUCK, G_FILT, G_ROLL}},
     {"SYSTEM", FAM_GLO, SC_GLOBAL, GR_NONE, {G_MIDI, G_SYNC, G_ROUTE, G_INFO}},
     {"DRUMS", FAM_GLO, SC_GLOBAL, GR_NONE, {G_DRCH, G_DRLVL, G_DRREV, G_DRDLY}},   /* GM kit on MIDI ch 10 */
-    {"MIDI", FAM_GLO, SC_GLOBAL, GR_NONE, {G_CH1, G_CH2, G_CH3, G_DRCH}},   /* 2.6: each track's channel, the drums' too */
+    {"MIDI", FAM_GLO, SC_GLOBAL, GR_NONE, {G_CH1, G_CH2, G_CH3, G_CH4}},   /* each synth track's channel (the drums': DRUMS) */
     {"MIDI 2", FAM_GLO, SC_GLOBAL, GR_NONE, {G_ROUTE, G_CHOTH, G_MIDI, G_BEND}},   /* 2.6: IN, OTHER, OUT, BEND: every MIDI
                                                                            * setting in these two pages (IN and OUT on
                                                                            * SYSTEM too, the drums' channel on DRUMS) */

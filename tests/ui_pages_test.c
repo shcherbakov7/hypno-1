@@ -886,7 +886,7 @@ int main(int argc, char **argv)
         for (j = 0; j < NPAGES; j++) if (!strcmp(PAGES[j].title, "STEP")) break;
         open_family(FAM_SEQ); ui.page = (uint8_t)j; ui.fam_last[FAM_SEQ] = (uint8_t)j; page_entered(); ui.force = 1; frames(2);
         b0 = ui.page;
-        for (j = 0; j < 3u; j++) { encs[panel.enc[EN_ALGO]] = 1; frames(2); }
+        for (j = 0; j < TRK_DRUM; j++) { encs[panel.enc[EN_ALGO]] = 1; frames(2); }
         check(song.sel == TRK_DRUM && ui.page == b0 && !page_for_drum(cur_page()) && !strcmp(PAGES[ui.page].title, "STEP"),
               "STEP on the drum track: not a page for the drums (DRUM TRACK shown, no piano roll of the drum steps)");
         for (j = 0; j < NSTEP; j++) memset(&TDRUM->dstep[j], 0, sizeof(dstep_t));
@@ -1079,7 +1079,7 @@ int main(int argc, char **argv)
             frame();
             check(trk[1].eng_req == BANK[0].e && trk[1].preset == bank_pi[0] && !strncmp(ui.msg, "T2 PROG 0", 9),
                   "MIDI Program Change 0: track 2 takes the first sound of the PRESETS list (T2 PROG 0)");
-            pc_req[3] = 3;                                /* PC 2 on the drum channel: kit 2 */
+            pc_req[TRK_DRUM] = 3;                         /* PC 2 on the drum channel: kit 2 */
             frame();
             check(TDRUM->p[P_E0] == 2, "MIDI Program Change on the drum channel: kit 2");
             pc_req[1] = (uint8_t)(tot + 1u);              /* past the end: nothing */
@@ -1194,18 +1194,18 @@ int main(int argc, char **argv)
                 const char *u;
                 char vv[12];
                 param_format(&GP[G_DRCH], 0, vv, &u);
-                check(m->id[0] == G_CH1 && m->id[1] == G_CH2 && m->id[2] == G_CH3 && m->id[3] == G_DRCH && !strcmp(m2->title, "MIDI 2") &&
+                check(m->id[0] == G_CH1 && m->id[1] == G_CH2 && m->id[2] == G_CH3 && m->id[3] == G_CH4 && !strcmp(m2->title, "MIDI 2") &&
                       m2->id[0] == G_ROUTE && m2->id[1] == G_CHOTH && m2->id[2] == G_MIDI && m2->id[3] == G_BEND &&
-                      !strcmp(GP[G_DRCH].label, "CH4") && !strcmp(vv, "OFF"),
-                      "GLO > MIDI: CH1 CH2 CH3 CH4 (the drums); MIDI 2: IN OTHER OUT BEND; CH4 0 reads OFF");
+                      !strcmp(GP[G_CH4].label, "CH4") && !strcmp(GP[G_DRCH].label, "CH D") && !strcmp(vv, "OFF"),
+                      "GLO > MIDI: CH1 CH2 CH3 CH4 (HYPNO-1: the four synth tracks); MIDI 2: IN OTHER OUT BEND; CH D 0 reads OFF");
                 song.g[G_CH2] = 2, frame();
-                K(EN_K2, 1);                              /* CH2 2 -> 3: track 3's: on to 4 */
-                check(song.g[G_CH2] == 4 && !strcmp(ui.msg, "CH 3 = TRACK 3"), "GLO > MIDI: CH2 turned onto track 3's channel: on to 4, \"CH 3 = TRACK 3\"");
-                K(EN_K2, -1);                             /* back: 3 taken, on to 2 */
-                check(song.g[G_CH2] == 2, "  turned back: over 3 again, to 2");
-                K(EN_K4, -7);                             /* DR CH 10 -> 3: track 3's, then 2, 1 (taken): OFF */
-                check(song.g[G_DRCH] == 0, "  the drums turned down onto 3, 2, 1 (all taken): OFF");
-                song.g[G_DRCH] = 10, frame();
+                K(EN_K2, 1);                              /* CH2 2 -> 3: track 3's, 4 track 4's: on to 5 */
+                check(song.g[G_CH2] == 5 && !strcmp(ui.msg, "CH 3 = TRACK 3"), "GLO > MIDI: CH2 turned onto track 3's channel: past 4 (track 4's) to 5, \"CH 3 = TRACK 3\"");
+                K(EN_K2, -1);                             /* back: 4 and 3 taken, on to 2 */
+                check(song.g[G_CH2] == 2, "  turned back: over 4 and 3 again, to 2");
+                K(EN_K4, -1);                             /* CH4 4 -> 3: track 3's, then 2, 1 (taken): OFF */
+                check(song.g[G_CH4] == 0, "  track 4 turned down onto 3, 2, 1 (all taken): OFF");
+                song.g[G_CH4] = 4, frame();
                 song.g[G_ROUTE] = 6;                      /* IN = CH 5 */
                 go_home(); frame();
                 open_family(FAM_GLO); frame();

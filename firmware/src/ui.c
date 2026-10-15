@@ -141,10 +141,10 @@ static void page_entered(void)
  * turned, and says whose it was. Every frame (ui_input) */
 static void midi_chan_fix(void)
 {
-    static const uint8_t ID[4] = {G_CH1, G_CH2, G_CH3, G_DRCH};
-    static int16_t was[4] = {-1, -1, -1, -1};
+    static const uint8_t ID[NTRK] = {G_CH1, G_CH2, G_CH3, G_CH4, G_DRCH};   /* (track order) */
+    static int16_t was[NTRK] = {-1, -1, -1, -1, -1};
     uint32_t k, j;
-    for (k = 0; k < 4u; k++) {
+    for (k = 0; k < NTRK; k++) {
         int32_t v = song.g[ID[k]], dir, owner = -1;
         if (was[k] < 0 || v == was[k] || !v) {
             was[k] = (int16_t)v;
@@ -153,7 +153,7 @@ static void midi_chan_fix(void)
         dir = v > was[k] ? 1 : -1;
         for (;;) {
             int32_t o = -1;
-            for (j = 0; j < 4u; j++)
+            for (j = 0; j < NTRK; j++)
                 if (j != k && song.g[ID[j]] == v)
                     o = (int32_t)j;
             if (o < 0)
@@ -174,7 +174,10 @@ static void midi_chan_fix(void)
             char b[8];
             str_cpy(b, "CH ", sizeof b);
             fmt_int(b + 3, song.g[ID[k]]);
-            ui_say(b, owner == 3 ? " = DRUMS" : owner == 0 ? " = TRACK 1" : owner == 1 ? " = TRACK 2" : " = TRACK 3");
+            {
+                static const char *const WHO[NTRK] = {" = TRACK 1", " = TRACK 2", " = TRACK 3", " = TRACK 4", " = DRUMS"};
+                ui_say(b, WHO[owner]);
+            }
             song.g[ID[k]] = (int16_t)v;
         }
         was[k] = (int16_t)v;
@@ -354,7 +357,8 @@ static void go_home(void)
  * writes the sequencer: every pattern is the one the player records or enters. */
 
 /* the parts' sounds at power-on (engine, preset): bass, pad, lead */
-static const uint8_t TRK_DEF[NPART][2] = {{0, 0}, {1, 0}, {4, 5}};   /* ANALOG 808 BOOM, DIGITAL RHODES, SAMPLE LOFI FLUTE */
+static const uint8_t TRK_DEF[NPART][2] = {{0, 0}, {1, 0}, {4, 5}, {ENGI_NOISE, 0}};   /* ANALOG 808 BOOM, DIGITAL RHODES,
+                                                                                   * SAMPLE LOFI FLUTE, (HYPNO-1) NOISE WIND */
 static uint32_t trk_def_engine(uint32_t i) { return i < NPART ? TRK_DEF[i][0] : 0u; }
 
 static int seq_is_empty(const track_t *t) { return track_empty(t); }
@@ -464,30 +468,27 @@ static const struct { uint8_t kind, e; const char *name; } BANK[] = {
     {BK_BASS, 0, "SAW BASS"}, {BK_KEYS, 1, "RHODES"}, {BK_KEYS, 1, "DX RHODES"}, {BK_KEYS, 1, "WURLI"},
     {BK_KEYS, 1, "M1 PIANO"}, {BK_KEYS, 1, "AFRO KEYS"}, {BK_KEYS, 4, "GRAND PNO"}, {BK_KEYS, 4, "DUSTY PNO"},
     {BK_KEYS, 4, "LOFI KEYS"}, {BK_KEYS, 2, "SOFT KEYS"}, {BK_KEYS, 1, "CLAV"}, {BK_KEYS, ENGI_FM6, "TINE EP"},
-    {BK_KEYS, 1, "FM GRAND"}, {BK_ORGAN, 7, "SOUL ORGAN"}, {BK_ORGAN, 7, "GOSPEL"}, {BK_ORGAN, 7, "JAZZ ORGAN"},
-    {BK_ORGAN, 7, "DIRTY B3"}, {BK_ORGAN, 7, "HOUSE ORGN"}, {BK_ORGAN, ENGI_FM6, "DRAWBARS"},
-    {BK_ORGAN, 6, "ACCORDION"}, {BK_ORGAN, 7, "ROCK ORGAN"}, {BK_ORGAN, 7, "CHAPEL"}, {BK_ORGAN, 7, "REGGAE ORG"},
-    {BK_PAD, 0, "WARM PAD"}, {BK_PAD, 6, "SAW PAD"}, {BK_PAD, 1, "GLASS PAD"}, {BK_PAD, 0, "DARK STR"},
-    {BK_PAD, 2, "CZ STRING"}, {BK_PAD, 0, "ATMOS PAD"}, {BK_PAD, 5, "CHOIR AAH"}, {BK_PAD, 5, "SOUL OOH"},
-    {BK_PAD, ENGI_FM6, "SOFT PAD"}, {BK_PAD, 6, "ENSEMBLE"}, {BK_PAD, ENGI_NOISE, "WIND"},
-    {BK_PAD, ENGI_NOISE, "OCEAN"}, {BK_PAD, 2, "CZ PAD"}, {BK_PAD, 5, "VOX PAD"}, {BK_PAD, 0, "SINE PAD"},
-    {BK_PAD, 6, "PULSE PAD"}, {BK_LEAD, 0, "SUPERSAW"}, {BK_LEAD, 0, "G-FUNK LD"}, {BK_LEAD, 6, "SYNC LEAD"},
-    {BK_LEAD, 6, "HOOVER"}, {BK_LEAD, 5, "TALKBOX"}, {BK_LEAD, 3, "GAME LEAD"}, {BK_LEAD, 4, "LOFI FLUTE"},
-    {BK_LEAD, 0, "FAT LEAD"}, {BK_LEAD, 0, "PAN FLUTE"}, {BK_LEAD, 5, "HARMONICA"},
-    {BK_LEAD, ENGI_NOISE, "NZ ARCADE"}, {BK_LEAD, 3, "WAVE LEAD"}, {BK_LEAD, 2, "CZ LEAD"}, {BK_LEAD, 5, "ROBOT"},
-    {BK_LEAD, 0, "PWM LEAD"}, {BK_LEAD, 6, "SQR LEAD"}, {BK_PLUCK, 0, "TRAP PLUCK"}, {BK_PLUCK, 2, "RESO PLUCK"},
-    {BK_PLUCK, 1, "PLUGG BELL"}, {BK_PLUCK, 1, "TRAP BELL"}, {BK_PLUCK, 1, "MUSIC BOX"}, {BK_PLUCK, 1, "KALIMBA"},
-    {BK_PLUCK, 1, "MARIMBA"}, {BK_PLUCK, 4, "VIBES"}, {BK_PLUCK, 3, "8BIT ARP"}, {BK_PLUCK, ENGI_FM6, "GLASS BELL"},
-    {BK_PLUCK, ENGI_FM6, "WOOD BARS"}, {BK_PLUCK, ENGI_FM6, "NYLON PICK"}, {BK_PLUCK, 1, "HARP"},
-    {BK_PLUCK, 1, "STEEL DRUM"}, {BK_PLUCK, 1, "GLOCKEN"}, {BK_PLUCK, 1, "CELESTA"}, {BK_PLUCK, 1, "XYLOPHONE"},
-    {BK_PLUCK, 3, "1BIT BEEP"}, {BK_PLUCK, 2, "CZ RESO"}, {BK_PLUCK, 1, "TUBE BELL"}, {BK_PLUCK, 1, "FM PLUCK"},
-    {BK_STAB, 6, "MIN STAB"}, {BK_STAB, 6, "MIN7 STAB"}, {BK_STAB, 6, "RAVE STAB"}, {BK_STAB, 6, "DUB CHORD"},
-    {BK_STAB, 0, "SYN BRASS"}, {BK_STAB, 2, "CZ BRASS"}, {BK_STAB, 4, "HORN STAB"}, {BK_STAB, 4, "STRING STB"},
-    {BK_STAB, ENGI_FM6, "BRASS SECT"}, {BK_STAB, 6, "80S POLY"}, {BK_STAB, 3, "CHIP CHORD"},
-    {BK_STAB, 6, "POWER STAB"}, {BK_FX, 4, "SCRATCH"}, {BK_FX, 4, "GM KIT"}, {BK_FX, ENGI_NOISE, "RAIN"},
-    {BK_FX, ENGI_NOISE, "NZ METAL"}, {BK_FX, ENGI_NOISE, "VINYL"}, {BK_FX, ENGI_NOISE, "HISS"},
-    {BK_FX, ENGI_NOISE, "RISER"}, {BK_FX, ENGI_NOISE, "NZ SNARE"}, {BK_FX, ENGI_NOISE, "BITCRUSH"},
-    {BK_FX, ENGI_NOISE, "RADIO"}, {BK_FX, 3, "CHIP NOISE"},
+    {BK_KEYS, 1, "FM GRAND"}, {BK_ORGAN, ENGI_FM6, "DRAWBARS"}, {BK_ORGAN, 6, "ACCORDION"}, {BK_PAD, 0, "WARM PAD"},
+    {BK_PAD, 6, "SAW PAD"}, {BK_PAD, 1, "GLASS PAD"}, {BK_PAD, 0, "DARK STR"}, {BK_PAD, 2, "CZ STRING"},
+    {BK_PAD, 0, "ATMOS PAD"}, {BK_PAD, 5, "CHOIR AAH"}, {BK_PAD, 5, "SOUL OOH"}, {BK_PAD, ENGI_FM6, "SOFT PAD"},
+    {BK_PAD, 6, "ENSEMBLE"}, {BK_PAD, ENGI_NOISE, "WIND"}, {BK_PAD, ENGI_NOISE, "OCEAN"}, {BK_PAD, 2, "CZ PAD"},
+    {BK_PAD, 5, "VOX PAD"}, {BK_PAD, 0, "SINE PAD"}, {BK_PAD, 6, "PULSE PAD"}, {BK_LEAD, 0, "SUPERSAW"},
+    {BK_LEAD, 0, "G-FUNK LD"}, {BK_LEAD, 6, "SYNC LEAD"}, {BK_LEAD, 6, "HOOVER"}, {BK_LEAD, 5, "TALKBOX"},
+    {BK_LEAD, 3, "GAME LEAD"}, {BK_LEAD, 4, "LOFI FLUTE"}, {BK_LEAD, 0, "FAT LEAD"}, {BK_LEAD, 0, "PAN FLUTE"},
+    {BK_LEAD, 5, "HARMONICA"}, {BK_LEAD, ENGI_NOISE, "NZ ARCADE"}, {BK_LEAD, 3, "WAVE LEAD"}, {BK_LEAD, 2, "CZ LEAD"},
+    {BK_LEAD, 5, "ROBOT"}, {BK_LEAD, 0, "PWM LEAD"}, {BK_LEAD, 6, "SQR LEAD"}, {BK_PLUCK, 0, "TRAP PLUCK"},
+    {BK_PLUCK, 2, "RESO PLUCK"}, {BK_PLUCK, 1, "PLUGG BELL"}, {BK_PLUCK, 1, "TRAP BELL"}, {BK_PLUCK, 1, "MUSIC BOX"},
+    {BK_PLUCK, 1, "KALIMBA"}, {BK_PLUCK, 1, "MARIMBA"}, {BK_PLUCK, 4, "VIBES"}, {BK_PLUCK, 3, "8BIT ARP"},
+    {BK_PLUCK, ENGI_FM6, "GLASS BELL"}, {BK_PLUCK, ENGI_FM6, "WOOD BARS"}, {BK_PLUCK, ENGI_FM6, "NYLON PICK"},
+    {BK_PLUCK, 1, "HARP"}, {BK_PLUCK, 1, "STEEL DRUM"}, {BK_PLUCK, 1, "GLOCKEN"}, {BK_PLUCK, 1, "CELESTA"},
+    {BK_PLUCK, 1, "XYLOPHONE"}, {BK_PLUCK, 3, "1BIT BEEP"}, {BK_PLUCK, 2, "CZ RESO"}, {BK_PLUCK, 1, "TUBE BELL"},
+    {BK_PLUCK, 1, "FM PLUCK"}, {BK_STAB, 6, "MIN STAB"}, {BK_STAB, 6, "MIN7 STAB"}, {BK_STAB, 6, "RAVE STAB"},
+    {BK_STAB, 6, "DUB CHORD"}, {BK_STAB, 0, "SYN BRASS"}, {BK_STAB, 2, "CZ BRASS"}, {BK_STAB, 4, "HORN STAB"},
+    {BK_STAB, 4, "STRING STB"}, {BK_STAB, ENGI_FM6, "BRASS SECT"}, {BK_STAB, 6, "80S POLY"},
+    {BK_STAB, 3, "CHIP CHORD"}, {BK_STAB, 6, "POWER STAB"}, {BK_FX, 4, "SCRATCH"}, {BK_FX, 4, "GM KIT"},
+    {BK_FX, ENGI_NOISE, "RAIN"}, {BK_FX, ENGI_NOISE, "NZ METAL"}, {BK_FX, ENGI_NOISE, "VINYL"},
+    {BK_FX, ENGI_NOISE, "HISS"}, {BK_FX, ENGI_NOISE, "RISER"}, {BK_FX, ENGI_NOISE, "NZ SNARE"},
+    {BK_FX, ENGI_NOISE, "BITCRUSH"}, {BK_FX, ENGI_NOISE, "RADIO"}, {BK_FX, 3, "CHIP NOISE"},
 #if FELUCCA_SLICE
     {BK_FX, ENGI_SLICE, "BREAK 16"}, {BK_FX, ENGI_SLICE, "CHOP 8"}, {BK_FX, ENGI_SLICE, "REVERSE"},
     {BK_FX, ENGI_SLICE, "USR SLICE"},

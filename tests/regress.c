@@ -20,7 +20,7 @@
  *    wider). Compared with CPU_FILE
  *    (tests/cpu_baseline.txt) at +25 % (instructions) or +35 % (time); ns per sample printed for
  *    information. A counted cost over the budget fails, a timed one or one far under it only warns.
- * 4. voices: the shared budget of 8 across 3 parts, stolen voices fade (no step), MONO / LEGATO /
+ * 4. voices: the shared budget of 8 across the parts, stolen voices fade (no step), MONO / LEGATO /
  *    UNISON keep their note under pressure, the VOICE engine's 4-voice cap, release frees voices, and
  *    no hanging note after the note-offs on any routing (USB channels 1..3, 10, others while the
  *    selected track changes, the keys while the selected track changes, with ARP and the voice modes).
@@ -292,10 +292,11 @@ static void job_song(const job_t *j)
     if (j->arg) {
         static const int16_t S[4][4] = {{SL_STUT, 9, 1, 127}, {SL_GATE, 1, 1, 127}, {0, 1, 1, 127},
                                         {SL_STUT, 12, 2, 110}};
-        for (i = 0; i < NTRK; i++) {
+        for (i = 0; i < NTRK; i++) {                    /* (HYPNO-1: row 4 is the drums'; the fourth part: OFF) */
+            const int16_t *r = i == TRK_DRUM ? S[3] : i < 3u ? S[i] : S[2];
             uint32_t k;
             for (k = 0; k < 4u; k++)
-                trk[i].p[P_SLCR + k] = S[i][k];
+                trk[i].p[P_SLCR + k] = r[k];
         }
         song.g[G_SWING] = 20;
     }
@@ -521,7 +522,7 @@ static void midi_pkt(uint32_t st, uint32_t d1, uint32_t d2)   /* as usb.c: the q
  * (a stolen voice fades out), the VOICE part at most 4; then all off: every voice free */
 static int chk_budget(char *msg, uint32_t n)
 {
-    static const uint8_t E[3] = {0, 1, 5};
+    static const uint8_t E[NPART] = {0, 1, 5, ENGI_NOISE};   /* (HYPNO-1: a fourth part) */
     uint8_t held[NPART][128] = {{0}};
     uint32_t p, k, worst = 0, vworst = 0, fading = 0, kills0 = voice_kills;
     host_tracks_init();
@@ -876,7 +877,7 @@ int main(int argc, char **argv)
 
     /* 4: the voice checks */
     k0 = nj;
-    add(J_CHECK, "voices: budget of 8 across 3 parts")->check = chk_budget;
+    add(J_CHECK, "voices: budget of 8 across the parts")->check = chk_budget;
     add(J_CHECK, "voices: a stolen voice fades")->check = chk_steal_fade;
     add(J_CHECK, "voices: MONO keeps its note")->check = chk_keep_mono;
     add(J_CHECK, "voices: LEGATO keeps its note")->check = chk_keep_legato;

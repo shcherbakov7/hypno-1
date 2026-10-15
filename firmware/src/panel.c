@@ -84,8 +84,8 @@ static uint8_t lights_mout;                    /* GLO > SYSTEM > MIDI (G_MIDI): 
 static uint8_t lights_min;                     /* GLO > SYSTEM > IN (G_ROUTE): 0 NOTES, 1 CLOCK only, 2..17 (2.6) CH 1..16 only */
 /* 2.6: GLO > MIDI CH1 CH2 CH3, GLO > DRUMS > CH, GLO > MIDI > OTHER: settings of the FM-1 (kept with the MIDI LEARN map
  * after the SYN kits: project.c midi_part), mirrored in song.g (felucca_init) */
-#define MIDI_SET_DEF {1, 2, 3, 10, 0, 2}            /* CH1 CH2 CH3, drums, OTHER, (2.6) BEND */
-static uint8_t midi_set[6] = MIDI_SET_DEF;
+#define MIDI_SET_DEF {1, 2, 3, 10, 0, 2, 4}         /* CH1 CH2 CH3, drums, OTHER, (2.6) BEND, (HYPNO-1) CH4 */
+static uint8_t midi_set[7] = MIDI_SET_DEF;
 static const uint16_t LIGHTS_NS[LIGHTS_N] = {0u, 500u, 1000u, 2000u};   /* the backlight pulse a frame (ns): a lit
                                                 * LED ~95 us, the glow (landmarks) 4 us (fm1_input.h) */
 static uint8_t usb_serial;                      /* menu USB SERIAL: 1 = the serial console presented (usb.c) */

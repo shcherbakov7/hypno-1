@@ -14,8 +14,9 @@ static uint8_t sync_reload;
 
 static void capture(uint32_t slot)             /* (proj_capture: with the nudges and locks, every slot free) */
 {
-    proj_capture(&proj_slot[slot]);
+    proj_capture_slot(slot);
 }
+#define SOUNDING (7u | 1u << TRK_DRUM)          /* HYPNO-1: parts 1..3 and the drums (part 4 has no steps here) */
 
 int main(int argc, char **argv)
 {
@@ -69,16 +70,16 @@ int main(int argc, char **argv)
         for (i = 0; i < NPART; i++)
             for (k = 0; k < NVOICE; k++)
                 if (trk[i].v[k].active) sounding |= 1u << i;
-        for (k = 0; k < NDRUM; k++) if (drums.v[k].active) sounding |= 8;
+        for (k = 0; k < NDRUM; k++) if (drums.v[k].active) sounding |= 1u << TRK_DRUM;
         active_tracks |= sounding;
-        if (sounding == 15u) simultaneous++;
+        if (sounding == SOUNDING) simultaneous++;
         for (k = 0; k < CTL; k++) {
             energy += (uint64_t)(out[k*2] < 0 ? -(int64_t)out[k*2] : out[k*2]);
             if (f) wav_put(f, out[k*2], out[k*2+1]);
         }
     }
     if (f) fclose(f);
-    assert(active_tracks == 15u && simultaneous > 100u && energy > 1000000u);
+    assert(active_tracks == SOUNDING && simultaneous > 100u && energy > 1000000u);
     assert(at_change >= FS*4u && at_change < FS*4u + CTL);
     assert(at_stop >= FS*8u && at_stop < FS*8u + CTL);
     assert(trk[0].step[0].note[0] == 41);
@@ -96,7 +97,7 @@ int main(int argc, char **argv)
         uint32_t bar = 4u * 60u * FS / (uint32_t)song.g[G_BPM], t, jumped = 0;
         arrangement.entry[1].scene = 1;
         arrangement_enabled = 0;
-        proj_apply(&proj_slot[0], 1);
+        slot_apply(0, 1);
         live_sec = 0;
         srec = 1;
         transport_req = 1;

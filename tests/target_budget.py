@@ -15,7 +15,7 @@ import re
 import sys
 
 FUNCS = ["analog_render", "digital_render", "phase_render", "lofi_render", "sample_render", "formant_render",
-         "trio_render", "trio_pass", "drawbar_render", "drawbar_block",
+         "trio_render", "trio_pass",   # (HYPNO-1: WHEEL retired)
          "slicer_track", "drums_mix",   # (HYPNO-1: GRAIN retired)
          "fm6_op_run", "fm6_op_fb", "fm6_render",     # FM6 (SLOOP 2.4): the operator loops (noinline), the voice
          "fm1_alnk0_irq"]

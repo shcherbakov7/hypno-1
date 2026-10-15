@@ -75,7 +75,7 @@ static uint32_t trk_index(const track_t *t) { return (uint32_t)(t - trk); }
 
 static uint32_t trk_midi_ch(uint32_t i)    /* MIDI channel 0..15 of track i (keys -> MIDI out); 2.6: GLO > MIDI */
 {                                          /* (2.6: OFF is OFF, in and out: 0xFF, nothing sent) */
-    int32_t c = i < NPART ? song.g[G_CH1 + i] : song.g[G_DRCH];
+    int32_t c = i < NPART ? song.g[G_CHN(i)] : song.g[G_DRCH];
     return c >= 1 && c <= 16 ? (uint32_t)c - 1u : 0xFFu;
 }
 /* a note on (vel > 0) / off to MIDI OUT on channel ch (trk_midi_ch: 0xFF, the track's MIDI OFF: nothing) */
@@ -2166,7 +2166,7 @@ static track_t *midi_own(uint32_t ch)
     if (song.g[G_DRCH] && ch + 1u == (uint32_t)song.g[G_DRCH])
         return TDRUM;
     for (i = 0; i < NPART; i++)
-        if (ch + 1u == (uint32_t)song.g[G_CH1 + i])
+        if (ch + 1u == (uint32_t)song.g[G_CHN(i)])
             return &trk[i];
     return 0;
 }
@@ -2516,7 +2516,7 @@ static void events_block(uint32_t n)
         uint32_t rt = (uint32_t)song.g[G_ROUTE];
         uint32_t chans = (uint32_t)(song.g[G_CH1] & 31) | (uint32_t)(song.g[G_CH2] & 31) << 5 |
                          (uint32_t)(song.g[G_CH3] & 31) << 10 | (uint32_t)(song.g[G_CHOTH] & 1) << 15 |
-                         (uint32_t)(song.g[G_DRCH] & 31) << 16;
+                         (uint32_t)(song.g[G_DRCH] & 31) << 16 | (uint32_t)(song.g[G_CH4] & 31) << 21;
         if ((rt != route_was && (rt >= 2u || route_was >= 2u)) || (chans != chans_was && chans_was != 0xFFFFFFFFu)) {
             panic_req = (uint8_t)((1u << NTRK) - 1u);
             seq_out_all_off();                        /* (MIDI OUT: the notes on end on the channels they went out on) */

@@ -158,7 +158,7 @@ static uint32_t busy_now(void)                   /* sounding voices of the parts
  * (12 steps: 3 against 4), T4 drums (16 steps, up to 3 notes a step); 120 BPM, 8 bars. Bars 5..6:
  * live recording: a clap into the drums just before step 4 (quantised onto it, not triggered twice),
  * MIDI ch 3 into the lead, a two-key chord on the keys into an empty pad step. solo: 0 = the mix,
- * 1..4 = that track only. Writes DIR/NAME; returns the number of failed checks. */
+ * 1..NTRK = that track only (NTRK: the drums). Writes DIR/NAME; returns the number of failed checks. */
 static int tracks_demo(const char *dir, const char *name, uint32_t solo)
 {
     static const uint8_t ACID[16] = {45, 45, 57, 45, 0, 48, 45, 55, 45, 0, 57, 52, 45, 48, 0, 50};
@@ -209,7 +209,7 @@ static int tracks_demo(const char *dir, const char *name, uint32_t solo)
         for (i = 0; i < NPART; i++)
             if (i + 1u != solo)
                 trk[i].p[P_LEVEL] = 0;
-        if (solo != 4u)
+        if (solo != TRK_DRUM + 1u)
             song.g[G_DRLVL] = 0;
     }
     kills0 = voice_kills;
@@ -219,7 +219,7 @@ static int tracks_demo(const char *dir, const char *name, uint32_t solo)
         int32_t o[2 * CTL];
         uint32_t barn = f / bar, period = div_samples(2), q;
         if (barn == 4u && !song.rec)
-            song.rec = 0x0Eu;                      /* bars 5..6: tracks 2, 3, 4 armed */
+            song.rec = (uint8_t)(1u << 1 | 1u << 2 | 1u << TRK_DRUM);   /* bars 5..6: tracks 2, 3 and the drums armed */
         if (barn == 6u)
             song.rec = 0;
         /* (a) a clap into the drums, late in step 3: lands on step 4, sounds now, step 4 does not repeat it */
@@ -687,7 +687,7 @@ static int tracks_test(const char *dir)
         pid = fork();
         int st = 0;
         if (!pid)
-            { int rc = tracks_demo(dir, SOLO[s], s); fflush(stdout); _exit(rc); }
+            { int rc = tracks_demo(dir, SOLO[s], s == 4u ? TRK_DRUM + 1u : s); fflush(stdout); _exit(rc); }   /* (4: the drums) */
         waitpid(pid, &st, 0);
         if (!WIFEXITED(st) || WEXITSTATUS(st))
             fail++;
@@ -739,7 +739,7 @@ static int tracks_test(const char *dir)
     printf("tracks: WAVs in %s: %s (mix), %s, %s, %s, %s, steal.wav, engine_switch.wav\n", dir, SOLO[0], SOLO[1], SOLO[2], SOLO[3], SOLO[4]);
     /* one part: every preset with 8 held notes (the engine's cap: VOICE 4) + drums; the worst one */
     for (e = 0; e < NENGINES; e++)
-        for (pi = 0; pi < ENGINES[e]->npresets; pi++) {
+        for (pi = 0; pi < (eng_retired(e) ? 0u : ENGINES[e]->npresets); pi++) {   /* (HYPNO-1: retired) */
             uint8_t parts[NPART][3] = {{(uint8_t)e, (uint8_t)pi, 8}, {0, 0, 0}, {0, 0, 0}};
             double c = tracks_cost(parts, 0);
             if (c > best_e[e]) {

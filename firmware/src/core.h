@@ -1,16 +1,17 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* Felucca core types: tracks, voices, engines, parameters.
- * Four tracks: tracks 1..3 are synth parts (each its own engine, preset, parameters,
- * voices and 64-step pattern), track 4 is the GM drum part (drums.c; its own voices,
- * pattern and the pattern parameters of its track_t). The parts share one budget of
- * NVOICE sounding voices (voice.c). */
+ * HYPNO-1: five tracks. Tracks 1..4 are synth parts (each its own engine, preset, parameters, voices and 64-step
+ * pattern: ACID, BASS, MELO, ATMOS), track 5 is the drum part (drums.c; its own voices, pattern and the pattern
+ * parameters of its track_t; its lane groups are KICK, RUMBLE, HATS, PERC). SLOOP has three parts and the drums on
+ * track 4: its projects load with the drums moved (project.c). The parts share one budget of NVOICE sounding
+ * voices (voice.c). */
 #include <stdint.h>
 #define NVOICE 8                 /* voices per part, and the budget shared by all parts */
 #define NPOLY 8
-#define NPART 3                  /* synth parts: tracks 1..3 */
-#define NTRK 4                   /* + the drum track */
-#define TRK_DRUM 3
+#define NPART 4                  /* synth parts: tracks 1..4 */
+#define NTRK 5                   /* + the drum track */
+#define TRK_DRUM 4
 enum { V_POLY, V_MONO, V_LEGATO, V_UNISON };   /* P_VOICE */
 #define NSTEP 64
 #define HALF_FRAMES 256          /* I2S half buffer: 5.8 ms at 44.1 kHz */
@@ -94,6 +95,7 @@ enum {                          /* global parameters */
     G_TXRATE, G_TXWHEN, G_TXDUCK,           /* its source, level, tone, movement; its rate, when it plays, the DUCK pump.
                                              * In a project (project.c: the spare bytes) */
     G_BEND,                     /* SLOOP 2.6, GLO > MIDI 2: the pitch bend's range, 1..12 semitones (a setting of the FM-1) */
+    G_CH4,                      /* HYPNO-1, GLO > MIDI: synth track 4's channel (a setting of the FM-1, as G_CH1..3) */
     G_COUNT
 };
 
@@ -305,7 +307,8 @@ typedef struct {
     int32_t batt_raw;            /* smoothed ADC ch3 (battery divider), 0 = not read yet */
 } song_t;
 
-static track_t trk[NTRK];        /* the instrument: three parts and the drum track */
+static track_t trk[NTRK];        /* the instrument: four parts and the drum track */
+#define G_CHN(i) ((i) < 3u ? G_CH1 + (i) : G_CH4)   /* the MIDI channel parameter of synth part i */
 static song_t song;
 
 /* The transport clock (seq.c runs it). One unit = one sample at 1 BPM: a beat is BEAT_U units at any
