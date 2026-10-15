@@ -570,3 +570,24 @@ for f in index.html style.css main.js fwsc.js firmwares.json fm1_web.wasm workle
 | Идеи PERFORM, сцен, кривых автоматизации | [Groove OS](https://www.groove-os.com/) (только идеи) |
 | Правила DSP без FPU | [Dinghy RULES.md](https://github.com/zvenson/dinghy) |
 | Каталог прошивок | [The Firmware Hub](https://thefirmwarehub.com/) |
+
+### Этап 2: дизайн (в работе, кода ещё нет)
+
+- **KICK.** Звук остаётся на синтезе SLOOP (`drum_synth.c`). Новые глобальные параметры: G_KTUNE (±12 полутонов), G_KDECAY (длина), G_KCLICK, G_KDRIVE. При ударе кика (лейны 0 и 14) в `drum_synth_on` берётся копия `dsnd_t` в `kick_d[NDRUM]` (144 Б RAM) и правится. Плюс новые техно-киты в `tools/gen_drumkits.py` (909, SINE, BERLIN, INDUSTRIAL, HARDGROOVE, TOK, BOOM; хэты METAL, NOISE BP, TICK; перк FM, BELL, RESON).
+- **RUMBLE** (ядро 1, в `drum_block` до INSERT и фильтра).
+  - Вход: голоса с нотами 36 и 35 дополнительно пишутся в `rmb_in[CTL]` внутри `drums_mix`.
+  - Ревер с децимацией ×8 (5,5 кГц): 4 гребёнки 211/263/331/409 + allpass 97, int16 в пуле (~2,6 КБ), демпфирование в петле. Дальше 2 однополюсных LPF 40–250 Гц, HPF ~25 Гц, `softclip`, дакинг огибающей сайдчейна и уровень, затем линейная интерполяция обратно ×8.
+  - Параметры G_RBLVL (0 = выкл), G_RBSIZE, G_RBTONE, G_RBDRIVE, G_RBDUCK. Имена G_RB*, потому что G_RSIZE уже занят ревером.
+- **Сайдчейн.**
+  - `duck_block` считает огибающую env (0..1).
+  - Источник G_SCSRC: KICK / RMBL / HATS / PERC / BEAT. BEAT — «призрачный» кик на каждую долю. Источник берётся из новой маски `drums.trig`, которую выставляет `drum_on`.
+  - Отпускание G_SCREL: 1/32 … 1/4, по умолчанию 1/8, как в SLOOP.
+  - Глубина на синты: G_SC1..G_SC4. Эффективная глубина трека = max(G_DUCK, G_SCk), поэтому SLOOP-проекты звучат как раньше.
+  - Дакинг возврата ревера и дилея: G_SCFX.
+- **Страницы GLO:** KICK, RUMBLE, RUMBLE 2, PUMP (SC1..SC4), PUMP 2 (SRC, REL, FX, DUCK).
+- **Хранение (16 параметров):**
+  - `uint8_t hy[20]` в `proj_x_t`: 4 × 960 = 3840 байт, ровно сектор;
+  - в FUN7 `project_t` то же поле, для слотов `proj_slot_hy[4][20]` в пуле;
+  - hy[0] = версия 1, hy[1..16] = значения. Старые записи (940 Б) читаются как «нет» и получают значения по умолчанию;
+  - применяется при полной загрузке (`all`), не при смене секции.
+- **Проверка:** хост-тесты (эталоны не должны измениться при выключенных функциях) и тестовая сборка `HYPNO_CPU_DEMO` в fm1-emu (загрузка ядра 1 с рамблом).
