@@ -116,15 +116,36 @@ static void dstep_clr(dstep_t *s, uint32_t l)                                /* 
 }
 
 /* HYPNO-1: the drum track's lanes in four groups, the tracks KICK, RUMBLE, HATS and PERC. Each group loops over
- * its own length of the drum track's steps, so hats on 12 steps drift against a kick on 16 (seq.c drum_compose).
- * The lengths are the drum track's P_E1..P_E4 (P_E0 is its kit, the others were unused): projects, the editor and
- * undo keep them as they are, and older projects hold 0 there, which means the track's LEN: they play as before */
+ * its own length of the drum track's steps, so hats on 12 steps drift against a kick on 16 (seq.c drum_compose),
+ * and has its own level (drum_on). A group is the drum track's P_E1..P_E4 (P_E0 is its kit, the others were
+ * unused): projects, the editor and undo keep them as they are. Older projects hold 0 there: the track's LEN, full
+ * level, so they play as before */
 enum { DG_KICK, DG_RUMBLE, DG_HATS, DG_PERC, DG_COUNT };
-#define P_DGLEN (P_E0 + 1)       /* P_DGLEN + group: its loop length, 0 = the track's LEN */
+#define P_DGLEN (P_E0 + 1)       /* P_DGLEN + group: its loop length (bits 0..6, 0 = the track's LEN), its level as an
+                                  * attenuation (bits 7..13, 0 = full) */
+#define DG_MAX (NSTEP | 127 << 7)
+static uint32_t dg_len(uint32_t g)
+{
+    uint32_t n = (uint32_t)TDRUM->p[P_DGLEN + g % DG_COUNT] & 127u;
+    return n > NSTEP ? NSTEP : n;
+}
+static uint32_t dg_level(uint32_t g) { return 127u - (((uint32_t)TDRUM->p[P_DGLEN + g % DG_COUNT] >> 7) & 127u); }
+static void dg_set(uint32_t g, int32_t len, int32_t level)
+{
+    TDRUM->p[P_DGLEN + g % DG_COUNT] = (int16_t)((uint32_t)clamp(len, 0, NSTEP) | (127u - (uint32_t)clamp(level, 0, 127)) << 7);
+}
 static const uint8_t LANE_GROUP[DRUM_LANES] = {
     DG_KICK, DG_RUMBLE, DG_PERC, DG_PERC, DG_HATS, DG_HATS, DG_HATS, DG_PERC,   /* kick, kick 2, snare, clap, hats, rim */
     DG_PERC, DG_PERC, DG_PERC, DG_PERC, DG_HATS, DG_HATS, DG_PERC, DG_PERC};    /* snare 2, toms, crash, ride, shaker.. */
 static const char *const DG_NAME[DG_COUNT] = {"KICK", "RUMBLE", "HATS", "PERC"};
+static uint32_t dg_lanes(uint32_t g)            /* the lanes of group g, a bit each */
+{
+    uint32_t l, m = 0;
+    for (l = 0; l < DRUM_LANES; l++)
+        if (LANE_GROUP[l] == g)
+            m |= 1u << l;
+    return m;
+}
 
 /* the zone a sampled drum voice plays (drum_on: v->s[4]): SMP_ZONES[i], or a user kit's, DZ_USR + slot * 16 + zone */
 #define DZ_USR (1 << 16)                 /* (above every SMP_ZONES index) */
@@ -245,8 +266,13 @@ static void drum_on(uint32_t note, uint32_t vel)
     if (note != 76u && note != 77u)                 /* the pads and key LEDs (not the click's wood block) */
         drums.hits |= (uint16_t)(1u << lane_of_note(note));
     if (note == 35u || note == 36u)
-        drums.kick = 1;                             /* (DUCK) */
-    if (kit >= DRUM_SYN) {                          /* SYN1..SYN4: your synthesised kit */
+        drums.kick = 1;                             /* (DUCK; a kick group at level 0 still pumps: a ghost kick) */
+    if (note != 76u && note != 77u) {               /* the lane group's level (HYPNO-1) */
+        vel = vel * dg_level(LANE_GROUP[lane_of_note(note)]) / 127u;
+        if (!vel)
+            return;
+    }
+    if (kit >= DRUM_SYN) {                         /* SYN1..SYN4: your synthesised kit */
         const dsu_kit_t *u = dsu_kit(kit - DRUM_SYN);
         drum_synth_on(note, vel, kit, u->s, u->crush);
         return;

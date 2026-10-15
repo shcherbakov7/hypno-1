@@ -198,8 +198,8 @@ static const param_desc_t GP[G_COUNT] = {
 };
 
 static const param_desc_t DRUM_KIT_DESC = PE("KIT", DRUM_KIT_NAMES, 0);
-static const param_desc_t DRUM_GLEN_DESC = {"LEN", F_INT, 0, NSTEP, 0, 0, 0};   /* a lane group's loop, 0 = the track's */
-/* the drum track's own parameters (drums.c): P_E0 its kit, P_DGLEN.. its lane groups' loop lengths; 0 = none */
+static const param_desc_t DRUM_GLEN_DESC = {"GROUP", F_INT, 0, DG_MAX, 0, 0, 0};   /* a lane group: loop and level */
+/* the drum track's own parameters (drums.c): P_E0 its kit, P_DGLEN.. its lane groups; 0 = none */
 static const param_desc_t *drum_pdesc(uint32_t id)
 {
     return id == P_E0 ? &DRUM_KIT_DESC : id >= P_DGLEN && id < P_DGLEN + DG_COUNT ? &DRUM_GLEN_DESC : 0;

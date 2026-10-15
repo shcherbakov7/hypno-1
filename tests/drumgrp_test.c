@@ -7,7 +7,8 @@
  *   longer     a group longer than the track's LEN plays its steps past LEN
  *   ratchets   a ratchet on a hat of a 3-step loop plays its extra hits on that loop
  *   record     a hit recorded live lands in its group's loop
- *   project    the loop lengths survive a save and a load; a project with 0 there plays as the track
+ *   level      a group's level scales its hits' velocity; at 0 it is silent
+ *   project    the loop lengths and levels survive a save and a load; a project with 0 there plays as the track
  * Exit status: the number of failed checks. */
 #define main hostsim_main
 #include "hostsim.c"
@@ -20,7 +21,7 @@ static uint32_t trk_def_engine(uint32_t i) { return i < NPART ? i : 0; }
 #define N_HAT 42u                /* LANE_NOTE[4], group HATS */
 #define N_CLAP 39u               /* LANE_NOTE[3], group PERC */
 
-typedef struct { uint64_t blk; uint8_t note; } hit_t;
+typedef struct { uint64_t blk; uint8_t note, vel; } hit_t;
 static hit_t hits[100000];
 static uint32_t nhits;
 static uint64_t blk;
@@ -34,6 +35,7 @@ static void run_block(void)
             if (drums.v[k].age > a && nhits < 100000u) {
                 hits[nhits].blk = blk;
                 hits[nhits].note = drums.v[k].note;
+                hits[nhits].vel = drums.v[k].vel;
                 nhits++;
             }
     blk++;
@@ -47,6 +49,9 @@ static void reset(void)
     host_tracks_init();
     for (i = 0; i < NTRK; i++)
         steps_clear(&trk[i]);
+    for (i = 0; i < DG_COUNT; i++)
+        dg_set(i, 0, 127);                           /* (P_E1.. are not track defaults: each case starts clean) */
+    drum_mute = 0;
     memset(&drums, 0, sizeof drums);
     drums.set = -2;
     nhits = 0;
@@ -161,20 +166,43 @@ static void t_record(void)
     check(at < 3u, "a hat recorded live on step 8 lands in the HATS loop of 3 (its step 2 or 3)");
 }
 
+static void t_level(void)
+{
+    uint32_t i, vk = 0, vh = 0;
+    reset();
+    dstep_set(&TDRUM->dstep[0], 0, LV_NORM, 0);
+    dstep_set(&TDRUM->dstep[0], 4, LV_NORM, 0);
+    dg_set(DG_HATS, 0, 64);
+    play_steps(8);
+    for (i = 0; i < nhits; i++) {
+        if (hits[i].note == N_KICK)
+            vk = hits[i].vel;
+        if (hits[i].note == N_HAT)
+            vh = hits[i].vel;
+    }
+    check(vk == 100u && vh == 100u * 64u / 127u, "HATS at level 64: its hits at half velocity, the kick's as played");
+    check(dg_len(DG_HATS) == 0u && dg_level(DG_HATS) == 64u, "the level does not touch the loop length (and back)");
+    reset();
+    dstep_set(&TDRUM->dstep[0], 4, LV_NORM, 0);
+    dg_set(DG_HATS, 12, 0);
+    play_steps(16);
+    check(count(N_HAT) == 0u, "HATS at level 0: silent");
+}
+
 static void t_project(void)
 {
     static project_t p;
     reset();
-    TDRUM->p[P_DGLEN + DG_KICK] = 0;
-    TDRUM->p[P_DGLEN + DG_RUMBLE] = 32;
-    TDRUM->p[P_DGLEN + DG_HATS] = 3;
-    TDRUM->p[P_DGLEN + DG_PERC] = 64;
+    dg_set(DG_KICK, 0, 127);
+    dg_set(DG_RUMBLE, 32, 0);
+    dg_set(DG_HATS, 3, 90);
+    dg_set(DG_PERC, 64, 127);
     proj_capture(&p);
-    TDRUM->p[P_DGLEN + DG_HATS] = 7;
+    dg_set(DG_HATS, 7, 10);
     proj_apply(&p, 1);
-    check(TDRUM->p[P_DGLEN + DG_KICK] == 0 && TDRUM->p[P_DGLEN + DG_RUMBLE] == 32 && TDRUM->p[P_DGLEN + DG_HATS] == 3 &&
-              TDRUM->p[P_DGLEN + DG_PERC] == 64,
-          "the loop lengths 0 / 32 / 3 / 64 come back from a saved project");
+    check(dg_len(DG_KICK) == 0u && dg_len(DG_RUMBLE) == 32u && dg_len(DG_HATS) == 3u && dg_len(DG_PERC) == 64u &&
+              dg_level(DG_KICK) == 127u && dg_level(DG_RUMBLE) == 0u && dg_level(DG_HATS) == 90u && dg_level(DG_PERC) == 127u,
+          "the loops 0 / 32 / 3 / 64 and levels 127 / 0 / 90 / 127 come back from a saved project");
     pt_set(&p.t[TRK_DRUM], P_DGLEN + DG_HATS, 0);    /* a SLOOP project: 0 there */
     p.sum = proj_sum(&p);
     proj_apply(&p, 1);
@@ -188,6 +216,7 @@ int main(void)
     t_longer();
     t_ratchet();
     t_record();
+    t_level();
     t_project();
     printf("drumgrp: %s\n", fails ? "FAILED" : "all checks ok");
     return fails;

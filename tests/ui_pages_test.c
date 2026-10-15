@@ -512,6 +512,10 @@ int main(int argc, char **argv)
         drum_lane = 4; drum_cursor = 6; drum_page = 0; ui.force = 1; ui.msg_t = 0;
         drums.hits = 1u | 1u << 4; frame(); ppm("live-grid");
         drum_page = 1; ui.force = 1; drums.hits = 1u | 1u << 4; frame(); ppm("live-kit");
+        /* HYPNO-1 GROUPS: hats on 12, perc on 7 at 70 %, the rumble muted */
+        dg_set(DG_HATS, 12, 127); dg_set(DG_PERC, 7, 90); drum_mute = (uint16_t)dg_lanes(DG_RUMBLE);
+        drum_page = 2; drum_grp = DG_HATS; ui.force = 1; frame(); ppm("live-groups");
+        dg_set(DG_HATS, 0, 127); dg_set(DG_PERC, 0, 127); drum_mute = 0;
         drum_page = 0; song.sel = 1; go_home(); ui.force = 1;
         transport_req = 1; frames(30); song.rec = 2u; frame(); ui.force = 1; frame(); ppm("live-tracks");
         song.rec = 0; transport_req = 2; frames(2);
@@ -844,6 +848,20 @@ int main(int argc, char **argv)
         check(pad_lit[9] && !dstep_has(&TDRUM->dstep[25], 3), "kit: the keys play the pads again, no step set");
         encs[panel.enc[EN_SELECT]] = -1; frame();
         check(drum_page == 0, "DRUMS: SELECT left: grid");
+        encs[panel.enc[EN_SELECT]] = 1; frame(); encs[panel.enc[EN_SELECT]] = 1; frame();
+        check(drum_page == 2, "DRUMS: SELECT right twice: groups (HYPNO-1)");
+        drum_grp = 0; encs[panel.enc[EN_K1]] = 2; frames(2);
+        check(drum_grp == DG_HATS, "groups: KNOB 1 picks the group");
+        encs[panel.enc[EN_K2]] = -4; frames(2);
+        check(dg_len(DG_HATS) == trk_len(TDRUM) - 4u, "groups: KNOB 2 sets its loop, from the track's LEN");
+        encs[panel.enc[EN_K3]] = -27; frames(2);
+        check(dg_level(DG_HATS) == 100u && dg_len(DG_HATS) == trk_len(TDRUM) - 4u, "groups: KNOB 3 its level, the loop kept");
+        encs[panel.enc[EN_K4]] = 1; frames(2);
+        check((drum_mute & dg_lanes(DG_HATS)) == dg_lanes(DG_HATS) && !(drum_mute & dg_lanes(DG_KICK)),
+              "groups: KNOB 4 right mutes its lanes, only them");
+        encs[panel.enc[EN_K4]] = -1; frames(2);
+        check(!drum_mute, "groups: KNOB 4 left: heard again");
+        dg_set(DG_HATS, 0, 127); drum_page = 0; ui.force = 1; frame();
         go_home(); frame();
         memset(pad_lit, 0, sizeof pad_lit);
         pen_lane = 0;

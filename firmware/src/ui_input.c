@@ -652,8 +652,8 @@ static void layer_tap(uint32_t layer)
         break;
     case LY_ERASE:
     case LY_STEP:
-        if (on_drum_page()) {                             /* DRUMS: GRID <-> KIT */
-            drum_page = (uint8_t)((drum_page + 1u) % 2u);
+        if (on_drum_page()) {                             /* DRUMS: GRID -> KIT -> GROUPS */
+            drum_page = (uint8_t)((drum_page + 1u) % DRUM_PAGES);
             ui.force = 1;
             break;
         }

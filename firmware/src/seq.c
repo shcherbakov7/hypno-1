@@ -442,8 +442,9 @@ static uint32_t trk_len(const track_t *t) { return t->p[P_SLEN] > 0 ? (uint32_t)
 /* the loop length of drum lane l: its group's (drums.c), else the track's */
 static uint32_t lane_len(const track_t *t, uint32_t l)
 {
-    int32_t g = t->p[P_DGLEN + LANE_GROUP[l % DRUM_LANES]];
-    return g > 0 ? (uint32_t)clamp(g, 1, NSTEP) : trk_len(t);
+    uint32_t g = dg_len(LANE_GROUP[l % DRUM_LANES]);
+    (void)t;                                         /* (the drum track's) */
+    return g ? g : trk_len(TDRUM);
 }
 /* the drum step heard at grid step abs: each lane from its group's own loop */
 static void drum_compose(const track_t *t, uint32_t abs, dstep_t *d)
