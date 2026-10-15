@@ -82,6 +82,9 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
         if ((shed_over & 3u) == 3u)
             shed_req = 1;                               /* two in a row */
         song.cpu_q8 = (song.cpu_q8 * 15u + (us * 256u) / (HALF_FRAMES * 1000000u / FS)) / 16u;
+        /* HYPNO-1: the second core's load, its jobs' time in this half (fx.c drum_job) */
+        c1_q8 = (c1_q8 * 15u + (c1_acc_ticks / FM1_TICKS_PER_US * 256u) / (HALF_FRAMES * 1000000u / FS)) / 16u;
+        c1_acc_ticks = 0;
         if (fm1_audio_free_half() != half)
             felucca_dbg.late++;                         /* the DMA moved on while we rendered */
         felucca_dbg.halves++;

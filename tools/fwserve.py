@@ -3,7 +3,7 @@
 """HYPNO-1: serve build/ on http://localhost:8770, no caching: every fetch gets the latest build.
 A copy of the fm1-emu emulator page (joakimeriksson.github.io/fm1-emu, MIT) in build/emu-site/ plays it:
 open http://localhost:8770/emu-site/?fw=hypno and press Start. Its firmware list gets "HYPNO-1 (dev)" =
-build/felucca.fwsc here, the rest as on the site.
+build/felucca.fwsc here and every other build/*.fwsc as hypno-<name> (test builds), the rest as on the site.
     python3 tools/fwserve.py [PORT]"""
 import functools
 import http.server
@@ -21,8 +21,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         if self.path.split("?")[0] == "/emu-site/firmwares.json":
             cat = json.loads((ROOT / "emu-site" / "firmwares.json").read_text())
-            me = dict(HYPNO, package="http://%s/felucca.fwsc" % self.headers.get("Host", "localhost:8770"))   # (a full URL)
-            cat["firmwares"] = [me] + [f for f in cat["firmwares"] if f.get("id") != "hypno"]
+            host = self.headers.get("Host", "localhost:8770")
+            mine = []                                   # every package in build/: felucca.fwsc as "hypno", the
+            for f in sorted(ROOT.glob("*.fwsc")):       # others (test builds) as "hypno-<name>"
+                fid = "hypno" if f.stem == "felucca" else "hypno-" + f.stem
+                mine.append(dict(HYPNO, id=fid, name="HYPNO-1 " + ("(dev)" if fid == "hypno" else f.stem),
+                                 package="http://%s/%s" % (host, f.name)))   # (a full URL)
+            cat["firmwares"] = mine + [f for f in cat["firmwares"] if not f.get("id", "").startswith("hypno")]
             body = json.dumps(cat).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")

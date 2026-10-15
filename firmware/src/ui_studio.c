@@ -257,7 +257,26 @@ static void studio_tracks_draw(void)
 {
     static uint32_t head, rows[MAIN_LANES], footer;
     uint32_t l, j, cur = main_lane();
-    te_header("main", TE_G3, &head);
+    {   /* the title: the load, core 0 / core 1 (one core: core 0's), at most twice a second */
+        static char t[16];
+        static uint32_t shown;
+        if (!t[0] || fm1_ms - shown >= 500u) {
+            uint32_t k;
+            shown = fm1_ms;
+            str_cpy(t, "cpu ", sizeof t);
+            fmt_int(t + 4, (int32_t)(song.cpu_q8 * 100u / 256u));
+#if FELUCCA_CPU2
+            if (fm1_c1_on) {
+                k = str_len(t);
+                t[k] = '/';
+                fmt_int(t + k + 1u, (int32_t)(c1_q8 * 100u / 256u));
+            }
+#endif
+            k = str_len(t);
+            t[k] = '%', t[k + 1u] = 0;
+        }
+        te_header(t, TE_G3, &head);
+    }
     for (l = 0; l < MAIN_LANES; l++) {
         uint32_t tk = lane_track(l), len = lane_len_of(l), pos = lane_pos(l), sel = l == cur, muted = lane_muted(l);
         uint32_t rec = (song.rec >> tk) & 1u, solo = (song.solo >> tk) & 1u, level = lane_level(l);

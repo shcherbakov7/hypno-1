@@ -1042,6 +1042,42 @@ static void texture_mix(int32_t *l, int32_t *r, uint32_t n)
         texture_reset(src);                             /* faded out: the new source from rest */
 }
 
+/* HYPNO-1: the drum track's block (its lanes, SLICER, INSERT, FILTER) into dk_*: by the second core while the first
+ * renders the synth parts (mix_block), or inline with one core. It touches the drums' own state only (drums, the
+ * drum track's SLICER, INSERT and filter slots, sl_dbuf; their hits and the random seed are taken at the note-ons,
+ * in events_block, before), so the cores never write the same thing */
+static int32_t dk_l[CTL], dk_r[CTL], dk_v[CTL], dk_d[CTL];
+static uint32_t c1_acc_ticks, c1_q8;     /* core 1: its jobs' TIMER4 ticks in this half, its load (1/256, audio.c) */
+static void drum_block(uint32_t n)
+{
+    uint32_t i;
+    tsvf_t fc;
+    djf_t *f = &tflt[TRK_DRUM];
+    for (i = 0; i < n; i++)
+        dk_l[i] = dk_r[i] = dk_v[i] = dk_d[i] = 0;
+    if (n <= CTL && djf_block(f, TDRUM->p[P_TFLT], &fc)) {   /* the drum track's FILTER: left, right, the sends */
+        slicer_drums(dk_l, dk_r, dk_v, dk_d, n);
+        drum_insert(dk_l, dk_r, dk_v, dk_d, n);
+        tflt_run(f, &fc, dk_l, n, 0);
+        tflt_run(f, &fc, dk_r, n, 1);
+        tflt_run(f, &fc, dk_v, n, 2);
+        tflt_run(f, &fc, dk_d, n, 3);
+    } else {
+        slicer_drums(dk_l, dk_r, dk_v, dk_d, n);    /* drums_render, through the SLICER when on */
+        if (n <= CTL && (TDRUM->p[P_ITYPE] | TDRUM->ins_run))
+            drum_insert(dk_l, dk_r, dk_v, dk_d, n);     /* the INSERT (2.6), no FILTER */
+    }
+}
+#if FELUCCA_CPU2
+static volatile uint32_t c1_job_ticks;
+static void drum_job(uint32_t n)                /* (core 1) */
+{
+    uint32_t t0 = fm1_ticks();                   /* (TIMER4, 24 MHz: a register read, fine on core 1) */
+    drum_block(n);
+    c1_job_ticks = fm1_ticks() - t0;
+}
+#endif
+
 static void mix_block(int32_t *out, uint32_t n)
 {
     uint32_t i;
@@ -1055,43 +1091,26 @@ static void mix_block(int32_t *out, uint32_t n)
     }
     events_block(n);
     duck_block(n * (uint32_t)song.g[G_BPM]);
-    for (i = 0; i < NPART; i++)
-        mix_part(&trk[i], n);
     drums.a0 = TDRUM->att;                              /* the drum track's mute / solo fade */
     drums.a1 = 32767 - gain_next(TDRUM);
     {
-        static int32_t dl[CTL], dr[CTL], dv[CTL], dd[CTL];
-        tsvf_t fc;
-        djf_t *f = &tflt[TRK_DRUM];
-        if (n <= CTL && djf_block(f, TDRUM->p[P_TFLT], &fc)) {   /* the drum track's FILTER: left, right, the sends */
-            for (i = 0; i < n; i++)
-                dl[i] = dr[i] = dv[i] = dd[i] = 0;
-            slicer_drums(dl, dr, dv, dd, n);
-            drum_insert(dl, dr, dv, dd, n);
-            tflt_run(f, &fc, dl, n, 0);
-            tflt_run(f, &fc, dr, n, 1);
-            tflt_run(f, &fc, dv, n, 2);
-            tflt_run(f, &fc, dd, n, 3);
-            for (i = 0; i < n; i++) {
-                mix_l[i] += dl[i];
-                mix_r[i] += dr[i];
-                send_r[i] += dv[i];
-                send_d[i] += dd[i];
-            }
-        } else if (n <= CTL && (TDRUM->p[P_ITYPE] | TDRUM->ins_run)) {   /* the INSERT (2.6), no FILTER */
-            for (i = 0; i < n; i++)
-                dl[i] = dr[i] = dv[i] = dd[i] = 0;
-            slicer_drums(dl, dr, dv, dd, n);
-            drum_insert(dl, dr, dv, dd, n);
-            for (i = 0; i < n; i++) {
-                mix_l[i] += dl[i];
-                mix_r[i] += dr[i];
-                send_r[i] += dv[i];
-                send_d[i] += dd[i];
-            }
-        } else {
-            slicer_drums(mix_l, mix_r, send_r, send_d, n);   /* drums_render, through the SLICER when on */
-        }
+#if FELUCCA_CPU2
+        int c1 = n <= CTL && fm1_cpu1_run(drum_job, n);  /* the drums on the second core, meanwhile the parts here */
+#endif
+        for (i = 0; i < NPART; i++)
+            mix_part(&trk[i], n);
+#if FELUCCA_CPU2
+        if (c1 && !fm1_cpu1_wait())
+            c1_acc_ticks += c1_job_ticks;
+        else                                            /* (one core; or it gave up: one glitch, then one core) */
+#endif
+            drum_block(n);
+    }
+    for (i = 0; i < n && i < CTL; i++) {
+        mix_l[i] += dk_l[i];
+        mix_r[i] += dk_r[i];
+        send_r[i] += dk_v[i];
+        send_d[i] += dk_d[i];
     }
     click_render(mix_l, mix_r, n);                      /* the metronome: its own voice (drums.c), any kit, any mute */
     texture_mix(mix_l, mix_r, n);                       /* GLO > TEXTURE (2.6): the bed, dry */

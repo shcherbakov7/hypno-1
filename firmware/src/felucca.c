@@ -1,11 +1,21 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* SLOOP (based on FELUCCA): one compilation unit (the HAL is header-only). Order matters. */
+#ifndef FELUCCA_CPU2
+#define FELUCCA_CPU2 1           /* HYPNO-1: the second core (hal/fm1_cpu1.h, from Felucca 1.6.1 / X0X) renders the drum
+                                  * track while the first renders the synth parts (fx.c mix_block); ON by default, one
+                                  * core again on a unit whose core 1 misreads or after a boot that crashed (main.c).
+                                  * 0 (FELUCCA_CPU2=0 build.py): none of it */
+#endif
+#define FM1_CPU1_USED FELUCCA_CPU2   /* hal/fm1_sys.h: every reset holds the second core first */
 #include <stdint.h>
 #include "fm1_time.h"
 #include "fm1_sys.h"
 #include "fm1_irq.h"
 #include "fm1_guard.h"
+#if FELUCCA_CPU2
+#include "fm1_cpu1.h"
+#endif
 #include "fm1_input.h"
 #include "fm1_timer.h"
 #include "fm1_audio.h"

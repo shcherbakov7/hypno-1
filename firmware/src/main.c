@@ -4,6 +4,9 @@
  * vectors, guards; then LCD, input (TIMER5 IRQ, 10 kHz), audio (ALNK0 IRQ). */
 extern uint32_t _data_start[], _data_end[], _data_load[], _bss_start[], _bss_end[];
 extern uint32_t _pool_start[], _pool_end[], _rt_start[], _rt_end[], _rt_load[];
+#if FELUCCA_CPU2
+extern uint32_t _c1_start[], _c1_end[], _c1_load[];
+#endif
 
 
 /* TIMER5 outranks ALNK0 (timer5_start): the scan keeps its pace while a half buffer renders. Nested in
@@ -97,6 +100,40 @@ static void fm1_fault(const fm1_crash_t *c)
 }
 
 /* power-on: three parts with their default sounds (TRK_DEF), the drum track, empty patterns */
+#if HYPNO_CPU_DEMO
+/* HYPNO-1 test builds (HYPNO_CPU_DEMO=1 build.py): a heavy project at power-on, playing, to measure the load (MAIN's
+ * title: core 0 / core 1). Four synth parts: FM6, ANALOG, TRIO, PHASE, each a four-note chord on every step (the
+ * budget of 8 voices full); the drums: 12 lanes on every 16th, ratchets on the hats */
+static void cpu_demo(void)
+{
+    static const uint8_t ENG[NPART] = {ENGI_FM6, 0, 6, 2};
+    uint32_t k, i, l;
+    for (k = 0; k < NPART; k++) {
+        track_t *t = &trk[k];
+        set_engine_of(t, ENG[k]);
+        t->engine = t->eng_req;
+        steps_clear(t);
+        t->p[P_SLEN] = 16;
+        t->p[P_VOICE] = V_POLY;
+        for (i = 0; i < 16u; i++) {
+            step_t *s = &t->step[i];
+            s->n = 4, s->time = ST_NOTE, s->vel = 100;
+            s->note[0] = (uint8_t)(48u + k * 5u), s->note[1] = (uint8_t)(52u + k * 5u);
+            s->note[2] = (uint8_t)(55u + k * 5u), s->note[3] = (uint8_t)(59u + k * 5u);
+        }
+        t->seq_active = 1;
+    }
+    steps_clear(TDRUM);
+    TDRUM->p[P_SLEN] = 16;
+    for (i = 0; i < 16u; i++)
+        for (l = 0; l < 12u; l++)
+            dstep_set(&TDRUM->dstep[i], l, LV_NORM, l == 4u ? 3u : 0u);
+    TDRUM->seq_active = 1;
+    song.g[G_BPM] = 140;
+    transport_req = 1;
+}
+#endif
+
 static void felucca_init(void)
 {
     uint32_t i;
@@ -157,6 +194,19 @@ static void fm1_main(void)
     fm1_adc_init();
     panel_init();
     felucca_init();
+#if HYPNO_CPU_DEMO
+    cpu_demo();                               /* (a test build: the heavy project, playing) */
+#endif
+#if FELUCCA_CPU2
+    if (!bootguard.failed) {
+        /* HYPNO-1: the second core (hal/fm1_cpu1.h; fx.c mix_block hands it the drums), at power-on, before the
+         * audio and the timers (started later it never reaches its entry). It starts in the chip's ROM: the PC
+         * limits open meanwhile. A boot that crashed before (bootguard), or no answer: one core */
+        fm1_guard_pc_open();
+        fm1_cpu1_start();
+        fm1_guard_enable(FM1_GUARD_PC);
+    }
+#endif
     audio_init();
 #if FELUCCA_CDC
     usb_cdc_on = usb_serial;                            /* menu USB SERIAL (persist_boot read it): before USB starts */
@@ -285,6 +335,11 @@ static void fm1_main(void)
 void fm1_cstart(void)
 {
     uint32_t *s, *d, p3, src, wdt, boot_mode;
+#if FELUCCA_CPU2
+    fm1_cpu1_halt();                           /* (after Jangada, X0X, Felucca 1.6.1): a second core still running from
+                                                * before this reset (a watchdog, a fault, another firmware) would read the
+                                                * RAM cleared below */
+#endif
     fm1_time_init();
     fm1_reset_reason();
     p3 = fm1_boot.p3_rst;
@@ -306,6 +361,10 @@ void fm1_cstart(void)
         *d = *s;
     for (s = _rt_load, d = _rt_start; d < _rt_end; s++, d++)
         *d = *s;                                /* flash driver code that must run from RAM */
+#if FELUCCA_CPU2
+    for (s = _c1_load, d = _c1_start; d < _c1_end; s++, d++)
+        *d = *s;                                /* the second core's waiting loop (hal/fm1_cpu1.h) */
+#endif
     fm1_mailbox_clear();
     fm1_guard_enable(FM1_GUARD_STACK | FM1_GUARD_WRITE | FM1_GUARD_BUS | FM1_GUARD_PC);
     fm1_boot.p3_rst = (uint8_t)p3;
