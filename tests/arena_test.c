@@ -1,11 +1,11 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* SLOOP 2.5 (experimental): the engines' shared per-part arena (engines.c eng_arena_of) and the two new
- * engines (PHYS, NOISE). Three checks:
- *  1. no stale state: an engine that takes the arena over from another one (GRAIN, FM6, PHYS in both slot
- *     layouts) sounds bit for bit as on a fresh FM-1 (the same phrase, the same random seed);
+/* SLOOP 2.5 (experimental): the engines' shared per-part arena (engines.c eng_arena_of). HYPNO-1: GRAIN and PHYS
+ * are retired, FM6 is the arena's one user. Three checks:
+ *  1. no stale state: an engine that takes the arena over from another one sounds bit for bit as on a fresh
+ *     FM-1 (the same phrase, the same random seed);
  *  2. ownership: no engine ever touches the arena of a part that does not play it (eng_arena_bad);
  *  3. a long random session on the three parts: engine switches through the UI's path (eng_req and the
- *     fade), PHYS MODEL flips under sounding notes, chords, note-offs, presets. The mix stays bounded, no
+ *     fade), chords, note-offs, presets. The mix stays bounded, no
  *     voice hangs, the end is silent. Built with -fsanitize=address,undefined by the runner too.
  *   cc -O1 -DARENA_STATS -Ibuild/gen -Ifirmware/src tests/arena_test.c -lm */
 #define main hostsim_main
@@ -33,10 +33,8 @@ static uint64_t fnv(uint64_t h, const int32_t *x, uint32_t n)
 
 typedef struct { uint8_t e, pi; int8_t model; const char *name; } cfg_t;   /* model >= 0: PHYS MODEL forced */
 static const cfg_t CFG[] = {
-    {ENGI_GRAIN, 0, -1, "GRAIN LOFI CLOUD"}, {ENGI_GRAIN, 4, -1, "GRAIN SHIMMER"},
     {ENGI_FM6, 0, -1, "FM6 TINE EP"}, {ENGI_FM6, 2, -1, "FM6 ROUND BASS"},
-    {ENGI_PHYS, 0, 0, "PHYS MODAL"}, {ENGI_PHYS, 2, 1, "PHYS STRING"}, {ENGI_PHYS, 5, 2, "PHYS MEMB"},
-    {ENGI_PHYS, 7, 3, "PHYS SYMP"}, {ENGI_PHYS, 8, 3, "PHYS SYMP HARP"},
+    {0, 0, -1, "ANALOG"}, {ENGI_NOISE, 0, -1, "NOISE"},
 };
 #define NCFG (sizeof CFG / sizeof CFG[0])
 
@@ -175,7 +173,7 @@ int main(int argc, char **argv)
     for (b = 0; b < NCFG; b++)
         for (a = 0; a < NCFG; a++) {
             uint64_t h;
-            if (a == b || (CFG[a].e == CFG[b].e && CFG[a].e != ENGI_PHYS))
+            if (a == b || CFG[a].e == CFG[b].e)
                 continue;                               /* (the same engine keeps its arena: not a takeover) */
             h = in_child(after, a, b);
             pairs++;
@@ -186,13 +184,13 @@ int main(int argc, char **argv)
                 check(0, what);
             }
         }
-    snprintf(what, sizeof what, "arena: every engine after every other one (%u pairs, both PHYS layouts) bit-identical to a fresh start", pairs);
+    snprintf(what, sizeof what, "arena: every engine after every other one (%u pairs) bit-identical to a fresh start", pairs);
     check(same == pairs, what);
 
     /* 3. the long random session (2. is counted all along) */
     {
         int32_t o[2 * CTL];
-        uint32_t blk, nblk = secs * (FS / CTL), i, p, switches = 0, flips = 0, maxabs = 0, hung = 0, tailmax = 0;
+        uint32_t blk, nblk = secs * (FS / CTL), i, p, switches = 0, maxabs = 0, hung = 0, tailmax = 0;
         uint8_t held[NPART][128];
         memset(held, 0, sizeof held);
         host_tracks_init();
@@ -203,14 +201,9 @@ int main(int argc, char **argv)
                 uint32_t ev = frnd(100);
                 p = frnd(NPART);
                 if (ev < 12) {                          /* engine and preset, the UI's way */
-                    uint32_t e = frnd(argc > 2 ? (uint32_t)atoi(argv[2]) : NENGINES);
+                    uint32_t e = eng_live(frnd(argc > 2 ? (uint32_t)atoi(argv[2]) : NENGINES));
                     host_preset_req(&trk[p], e, frnd(ENGINES[e]->npresets));
                     switches++;
-                } else if (ev < 20) {                   /* PHYS: MODEL under the notes (layout flips) */
-                    if (trk[p].engine == ENGI_PHYS) {
-                        trk[p].p[P_E0] = (int16_t)frnd(4);
-                        flips++;
-                    }
                 } else if (ev < 70) {
                     uint32_t n = 36u + frnd(48);
                     if (!held[p][n]) {
@@ -256,7 +249,7 @@ int main(int argc, char **argv)
         for (p = 0; p < NPART; p++)
             for (i = 0; i < NVOICE; i++)
                 hung += trk[p].v[i].active;
-        printf("fuzz: %u s, %u engine switches, %u PHYS model flips, %u arena claims, peak %u\n", secs, switches, flips,
+        printf("fuzz: %u s, %u engine switches, %u arena claims, peak %u\n", secs, switches,
                eng_arena_claims, maxabs);
         snprintf(what, sizeof what, "fuzz: %u s on 3 parts: the mix stays under full scale (peak %u)", secs, maxabs);
         check(maxabs < 32767u, what);
@@ -266,59 +259,6 @@ int main(int argc, char **argv)
         check(tailmax <= 6u, what);
         snprintf(what, sizeof what, "ownership: no engine touched the arena of a part that does not play it (%u)", eng_arena_bad);
         check(eng_arena_bad == 0, what);
-    }
-    /* 4. PHYS: MODEL flipped every ~50 ms under sounding chords on the three parts (the two slot layouts take
-     * turns over the same bytes), against the same chords with MODEL left alone */
-    {
-        int32_t o[2 * CTL];
-        uint32_t pass, blk, i, p, peak[2] = {0, 0}, hung = 0, tail = 0;
-        for (pass = 0; pass < 2u; pass++) {
-            fz = 0x13579BDFu;
-            host_tracks_init();
-            for (p = 0; p < NPART; p++) {
-                host_preset(&trk[p], ENGI_PHYS, p == 0 ? 2u : p == 1 ? 7u : 0u);
-            }
-            for (blk = 0; blk < 120u * (FS / CTL); blk++) {
-                if (frnd(64) == 0) {
-                    p = frnd(NPART);
-                    if (frnd(4) == 0) {
-                        uint32_t md = frnd(4);
-                        if (pass)
-                            trk[p].p[P_E0] = (int16_t)md;
-                    } else if (frnd(2)) {
-                        uint32_t k, r = 40u + frnd(30);
-                        for (k = 0; k < 3u; k++)
-                            trk_note_on(&trk[p], r + 4u * k, 60u + frnd(68));
-                    } else {
-                        trk_all_off(&trk[p]);
-                    }
-                }
-                mix_block(o, CTL);
-                for (i = 0; i < 2u * CTL; i++) {
-                    uint32_t v = (uint32_t)(o[i] < 0 ? -o[i] : o[i]);
-                    if (v > peak[pass])
-                        peak[pass] = v;
-                }
-            }
-            for (p = 0; p < NPART; p++)
-                trk_all_off(&trk[p]);
-            for (blk = 0; blk < 20u * (FS / CTL); blk++) {
-                mix_block(o, CTL);
-                if (pass && blk >= 19u * (FS / CTL))
-                    for (i = 0; i < 2u * CTL; i++) {
-                        uint32_t v = (uint32_t)(o[i] < 0 ? -o[i] : o[i]);
-                        if (v > tail)
-                            tail = v;
-                    }
-            }
-            if (pass)
-                for (p = 0; p < NPART; p++)
-                    for (i = 0; i < NVOICE; i++)
-                        hung += trk[p].v[i].active;
-        }
-        snprintf(what, sizeof what, "PHYS: MODEL flips under chords for 120 s: peak %u (%u without the flips), %u voices hanging, end %u",
-                 peak[1], peak[0], hung, tail);
-        check(peak[1] < 32767u && peak[1] <= peak[0] + peak[0] / 2u && hung == 0 && tail <= 6u, what);
     }
     printf(fails ? "arena_test: %d FAILED\n" : "arena_test: all checks ok\n", fails);
     return fails != 0;

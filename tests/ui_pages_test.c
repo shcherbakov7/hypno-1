@@ -131,7 +131,7 @@ int main(int argc, char **argv)
                 fails++;
             }
         for (e = 0; e < NENGINES; e++)
-            for (k = 0; k < ENGINES[e]->npresets; k++) {
+            for (k = 0; k < (eng_retired(e) ? 0u : ENGINES[e]->npresets); k++) {   /* (HYPNO-1: GRAIN, PHYS) */
                 for (hits = 0, n = 0; n < NBANK; n++)
                     hits += BANK[n].e == e && bank_pi[n] == k;
                 if (hits != 1) {

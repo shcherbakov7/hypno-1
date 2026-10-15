@@ -252,7 +252,7 @@ static int up_load_to(track_t *t, uint32_t k)       /* user preset k into track 
     sound_change(t);                                    /* (2.6: what sounds fades out with the old sound, no click) */
     panic_req |= (uint8_t)(1u << trk_index(t));
     fm1_irq_off();                                      /* the audio ISR must not see half a sound */
-    t->eng_req = r->engine;
+    t->eng_req = (uint8_t)eng_live(r->engine);         /* (HYPNO-1: GRAIN, PHYS play ANALOG) */
     for (i = 0; i < P_COUNT; i++)
         t->p[i] = v[i];
     t->preset = 0;

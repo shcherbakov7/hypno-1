@@ -698,7 +698,7 @@ static int chk_hang(char *msg, uint32_t n)
     for (round = 0; round < 3u && !bad; round++) {
         host_tracks_init();
         for (k = 0; k < NPART; k++) {
-            host_preset(&trk[k], rnd(NENGINES), rnd(4));
+            host_preset(&trk[k], eng_live(rnd(NENGINES)), rnd(4));
             trk[k].p[P_VOICE] = (int16_t)rnd(4);
             trk[k].p[P_AMODE] = rnd(3) == 0 ? (int16_t)(1 + rnd(4)) : 0;
             trk[k].p[P_AHOLD] = 0;
@@ -831,7 +831,7 @@ int main(int argc, char **argv)
 
     /* 1 + 2: the golden renders */
     g0 = nj;
-    for (e = 0; e < NENGINES; e++)
+    for (e = 0; e < NENGINES; e++) if (!eng_retired(e))
         for (pi = 0; pi < ENGINES[e]->npresets; pi++) {
             job_t *j;
             slug(s, ENGINES[e]->presets[pi].name, sizeof s);
@@ -887,7 +887,7 @@ int main(int argc, char **argv)
 
     /* 3: CPU, one child at a time (the ns are for information; the instruction counts do not care) */
     c0 = nj;
-    for (e = 0; e < NENGINES; e++)
+    for (e = 0; e < NENGINES; e++) if (!eng_retired(e))
         for (pi = 0; pi < ENGINES[e]->npresets; pi++) {
             job_t *j;
             slug(s, ENGINES[e]->presets[pi].name, sizeof s);
@@ -904,18 +904,18 @@ int main(int argc, char **argv)
     {   /* mixes: idle (subtracted from the presets' counts), idle + drums, DIGITAL + PHASE + VOICE asking
          * 8 + 8 + 4 (the budget keeps 8) + drums */
         job_t *j;
-        j = add(J_CPU, "cpu/mix/3parts_heavy_now_drums");      /* (2.5 exp) FM6, GRAIN, TRIO */
+        j = add(J_CPU, "cpu/mix/3parts_heavy_now_drums");      /* (2.5 exp) FM6, NOISE (HYPNO-1: GRAIN retired), TRIO */
         memset(cpu_parts[ncpu], 0, sizeof cpu_parts[ncpu]);
         cpu_parts[ncpu][0][0] = ENGI_FM6, cpu_parts[ncpu][0][1] = 0, cpu_parts[ncpu][0][2] = 8;
-        cpu_parts[ncpu][1][0] = ENGI_GRAIN, cpu_parts[ncpu][1][1] = 0, cpu_parts[ncpu][1][2] = 8;
+        cpu_parts[ncpu][1][0] = ENGI_NOISE, cpu_parts[ncpu][1][1] = 0, cpu_parts[ncpu][1][2] = 8;
         cpu_parts[ncpu][2][0] = 6, cpu_parts[ncpu][2][1] = 3, cpu_parts[ncpu][2][2] = 8;
         cpu_parts[ncpu][NPART][0] = 1;
         j->parts = (const uint8_t (*)[3])cpu_parts[ncpu++];
         j->e = 0xFF;
-        j = add(J_CPU, "cpu/mix/3parts_phys_noise_drums");     /* (2.5 exp) PHYS SYMP, PHYS MODAL, NOISE */
+        j = add(J_CPU, "cpu/mix/3parts_fm6_noise_drums");      /* HYPNO-1: two FM6, NOISE (PHYS retired) */
         memset(cpu_parts[ncpu], 0, sizeof cpu_parts[ncpu]);
-        cpu_parts[ncpu][0][0] = ENGI_PHYS, cpu_parts[ncpu][0][1] = 7, cpu_parts[ncpu][0][2] = 8;
-        cpu_parts[ncpu][1][0] = ENGI_PHYS, cpu_parts[ncpu][1][1] = 3, cpu_parts[ncpu][1][2] = 8;
+        cpu_parts[ncpu][0][0] = ENGI_FM6, cpu_parts[ncpu][0][1] = 1, cpu_parts[ncpu][0][2] = 8;
+        cpu_parts[ncpu][1][0] = ENGI_FM6, cpu_parts[ncpu][1][1] = 2, cpu_parts[ncpu][1][2] = 8;
         cpu_parts[ncpu][2][0] = ENGI_NOISE, cpu_parts[ncpu][2][1] = 1, cpu_parts[ncpu][2][2] = 8;
         cpu_parts[ncpu][NPART][0] = 1;
         j->parts = (const uint8_t (*)[3])cpu_parts[ncpu++];
@@ -1112,7 +1112,7 @@ int main(int argc, char **argv)
     }
     printf("regress: CPU, one part with 8 notes held (VOICE 4), heaviest preset per engine (%s / ns per sample):\n",
            J[c0].r.ipc ? "instructions" : "per mille");
-    for (e = 0; e < NENGINES; e++)
+    for (e = 0; e < NENGINES; e++) if (!eng_retired(e))
         printf("regress:   %-8s %-14s %6.0f %s  %6.1f ns\n", ENGINES[e]->name, ENGINES[e]->presets[heavy_p[e]].name,
                J[c0].r.ipc ? heavy[e] : heavy[e] / cpu_cost(&J[c1 - 2u]) * 1000.0, J[c0].r.ipc ? "instr" : "/1000", heavy_ns[e]);
     for (i = c1 - 3u; i < c1; i++)
