@@ -517,7 +517,9 @@ int main(int argc, char **argv)
         drum_page = 2; drum_grp = DG_HATS; ui.force = 1; frame(); ppm("live-groups");
         dg_set(DG_HATS, 0, 127); dg_set(DG_PERC, 0, 127); drum_mute = 0;
         drum_page = 0; song.sel = 1; go_home(); ui.force = 1;
+        dg_set(DG_HATS, 12, 127); dg_set(DG_PERC, 7, 100);   /* (HYPNO-1 MAIN: two groups on their own loops) */
         transport_req = 1; frames(30); song.rec = 2u; frame(); ui.force = 1; frame(); ppm("live-tracks");
+        dg_set(DG_HATS, 0, 127); dg_set(DG_PERC, 0, 127);
         song.rec = 0; transport_req = 2; frames(2);
         song.sel = TRK_DRUM;
     }
@@ -862,6 +864,20 @@ int main(int argc, char **argv)
         encs[panel.enc[EN_K4]] = -1; frames(2);
         check(!drum_mute, "groups: KNOB 4 left: heard again");
         dg_set(DG_HATS, 0, 127); drum_page = 0; ui.force = 1; frame();
+        {   /* HYPNO-1 MAIN: ALGORITHM walks the eight lanes, the drums' groups first */
+            uint32_t n, ok = 1;
+            go_home(); song.sel = 0; frames(2);
+            for (n = 0; n < 4u; n++) { encs[panel.enc[EN_ALGO]] = -1; frames(2); }
+            ok &= song.sel == TRK_DRUM && drum_grp == DG_KICK;
+            encs[panel.enc[EN_ALGO]] = -1; frames(2);
+            ok &= song.sel == TRK_DRUM && drum_grp == DG_KICK;     /* (the first lane: stays) */
+            encs[panel.enc[EN_ALGO]] = 2; frames(2);
+            ok &= song.sel == TRK_DRUM && drum_grp == DG_RUMBLE;   /* (one lane a turn, whatever its size) */
+            for (n = 0; n < 7u; n++) { encs[panel.enc[EN_ALGO]] = 1; frames(2); }
+            ok &= song.sel == NPART - 1u;
+            check(ok, "MAIN: ALGORITHM left from ACID: PERC .. KICK (the drum track, its group), right: RUMBLE .. ATMOS");
+            song.sel = TRK_DRUM; ui.force = 1; frame();         /* (as before: the drum track) */
+        }
         go_home(); frame();
         memset(pad_lit, 0, sizeof pad_lit);
         pen_lane = 0;
@@ -886,8 +902,8 @@ int main(int argc, char **argv)
         for (j = 0; j < NPAGES; j++) if (!strcmp(PAGES[j].title, "STEP")) break;
         open_family(FAM_SEQ); ui.page = (uint8_t)j; ui.fam_last[FAM_SEQ] = (uint8_t)j; page_entered(); ui.force = 1; frames(2);
         b0 = ui.page;
-        for (j = 0; j < TRK_DRUM; j++) { encs[panel.enc[EN_ALGO]] = 1; frames(2); }
-        check(song.sel == TRK_DRUM && ui.page == b0 && !page_for_drum(cur_page()) && !strcmp(PAGES[ui.page].title, "STEP"),
+        encs[panel.enc[EN_ALGO]] = -1; frames(2);        /* HYPNO-1: ACID -> PERC, the drums' last lane on MAIN */
+        check(song.sel == TRK_DRUM && drum_grp == DG_PERC && ui.page == b0 && !page_for_drum(cur_page()) && !strcmp(PAGES[ui.page].title, "STEP"),
               "STEP on the drum track: not a page for the drums (DRUM TRACK shown, no piano roll of the drum steps)");
         for (j = 0; j < NSTEP; j++) memset(&TDRUM->dstep[j], 0, sizeof(dstep_t));
         song.sel = 0; go_home(); frames(4);
