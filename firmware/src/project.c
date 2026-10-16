@@ -38,7 +38,7 @@
 #define PROJ_NG 32u                            /* the globals of formats 4 and 5 (G_COUNT until 2.4). SLOOP 2.5's
                                                 * G_DRDLY rides in the byte after sel (0 in older projects: off),
                                                 * so the format and its size do not change */
-_Static_assert(G_DRDLY == PROJ_NG && G_TXSRC == PROJ_NG + 5u && G_COUNT == G_CH4 + 1u,
+_Static_assert(G_DRDLY == PROJ_NG && G_TXSRC == PROJ_NG + 5u && G_COUNT == G_SC4 + 1u,
                "the globals a project holds, then G_DRDLY (then 2.6's GLO > MIDI: settings of the FM-1)");
 #define PROJ_NC6 ((uint32_t)P_ITYPE)           /* format 6: the parameters kept in 16 bits, P_LEVEL .. P_VLEAD (as 5), */
 #define PROJ_NX6 ((uint32_t)(P_E0 - P_ITYPE))  /* the 2.6 ones in a byte (0..127), then P_E0 .. P_E7 */
@@ -392,23 +392,45 @@ static int proj_import6(project_v6_t *q, const void *b, int n)
  * slot, OBJ_AUTOX the autosave's), tied to its format 6 project by that project's sum: a record that does not
  * match (an older save, a save cut short between the two) leaves the fourth part empty */
 #define PROJ_MAGIC 0x46554E37u                 /* "FUN7" */
+#define HY_N 20u                               /* HYPNO-1 stage 2: [0] its version (1; 0 = none: the defaults), [1..]
+                                                * G_KTUNE .. G_SC4 a byte each (proj_hy_put / proj_hy_get) */
+#define HY_VER 1u
 typedef struct {
     uint32_t magic, size;
     int16_t g[PROJ_NG];
     uint8_t sel, drdly, rsv[2];                /* (as format 6) */
     proj_trk_t t[NTRK];
+    uint8_t hy[HY_N];                          /* HYPNO-1 stage 2: the kick, rumble and sidechain (proj_hy_*) */
     uint32_t sum;
 } project_t;
 typedef struct {
     uint32_t sum6;                             /* the sum of the format 6 project it belongs to, 0 = none */
     proj_trk_t t;                              /* its fourth part */
+    uint8_t hy[HY_N];                          /* and its HYPNO-1 block (project_t.hy) */
 } proj_x_t;
 _Static_assert(NT6 == NPART && T6_DRUM == NPART - 1u && TRK_DRUM == NPART, "format 6: parts 1..3, the drums; 7: + part 4");
 _Static_assert(4u * sizeof(proj_x_t) <= 3840u, "the four slots' fourth parts fit one flash object");
+_Static_assert(G_SC4 - G_KTUNE + 2u <= HY_N, "the HYPNO-1 block holds every stage 2 global");
 /* the four slots (the song sections A..D) as flash keeps them: format 6 in .noinit RAM (they survive resets; there
  * is no room there for more), the fourth parts in the pool (refilled from flash at power-on: project_boot) */
 project_v6_t proj_slot[4] __attribute__((section(".noinit")));
 static proj_trk_t proj_slot4[4] __attribute__((section(".pool")));
+static uint8_t proj_slot_hy[4][HY_N] __attribute__((section(".pool")));   /* .. and their HYPNO-1 blocks */
+/* the stage 2 globals (the kick, the rumble, the sidechain) <-> a HYPNO-1 block */
+static void proj_hy_put(uint8_t *hy)
+{
+    uint32_t i;
+    memset(hy, 0, HY_N);
+    hy[0] = HY_VER;
+    for (i = G_KTUNE; i <= G_SC4; i++)
+        hy[1u + i - G_KTUNE] = (uint8_t)(int8_t)song.g[i];
+}
+static void proj_hy_get(const uint8_t *hy)     /* version 0 (an older project, no record): the defaults */
+{
+    uint32_t i;
+    for (i = G_KTUNE; i <= G_SC4; i++)
+        song.g[i] = (int16_t)(hy && hy[0] == HY_VER ? clamp((int8_t)hy[1u + i - G_KTUNE], GP[i].min, GP[i].max) : GP[i].def);
+}
 static uint32_t proj_sum(const project_t *p) { return proj_hash(p, sizeof *p - 4u); }
 static int proj_ok(const project_t *q) { return q->magic == PROJ_MAGIC && q->size == sizeof *q && q->sum == proj_sum(q); }
 
@@ -431,10 +453,13 @@ static void proj_widen(project_t *q, const proj_x_t *x)
 {
     uint32_t s6 = ((const project_v6_t *)q)->sum;    /* (before t[TRK_DRUM] covers it) */
     memcpy(&q->t[TRK_DRUM], &q->t[T6_DRUM], sizeof q->t[0]);
-    if (x && s6 && x->sum6 == s6)
+    if (x && s6 && x->sum6 == s6) {
         memcpy(&q->t[NPART - 1u], &x->t, sizeof q->t[0]);
-    else
+        memcpy(q->hy, x->hy, HY_N);
+    } else {
         proj_trk_empty(&q->t[NPART - 1u], NPART - 1u);
+        memset(q->hy, 0, HY_N);                         /* (no block: the defaults) */
+    }
     q->magic = PROJ_MAGIC;
     q->size = sizeof *q;
     if (q->sel == T6_DRUM)
@@ -454,6 +479,7 @@ static void proj_narrow(project_v6_t *d, proj_x_t *x, const project_t *s)
     if (x) {
         x->sum6 = d->sum;
         memcpy(&x->t, &s->t[NPART - 1u], sizeof x->t);
+        memcpy(x->hy, s->hy, HY_N);
     }
 }
 /* n bytes of a stored project (format 7, or 6 and older: widened, the fourth part empty) -> q; 0 = not a project */
@@ -530,6 +556,7 @@ static void proj_capture(project_t *p)        /* what is playing now, as a proje
     proj_head_capture(p);
     for (i = 0; i < NTRK; i++)
         proj_trk_capture(&p->t[i], i);
+    proj_hy_put(p->hy);
     p->sum = proj_sum(p);
 }
 /* what is playing now into slot s (a song section): format 6 there, the fourth part beside it */
@@ -546,6 +573,7 @@ static void proj_capture_slot(uint32_t s)
         proj_trk_capture(&d->t[i], i);
     proj_trk_capture(&d->t[T6_DRUM], TRK_DRUM);
     proj_trk_capture(&proj_slot4[s & 3u], NPART - 1u);
+    proj_hy_put(proj_slot_hy[s & 3u]);
     d->sum = proj6_sum(d);
 }
 /* slot s's tracks in track order (format 7): its parts 1..3, its fourth part, its drums */
@@ -630,12 +658,16 @@ static void proj_apply(const project_t *p, int all)
     for (k = 0; k < NTRK; k++)
         tr[k] = &p->t[k];
     proj_apply_tr(p, tr, all);
+    if (all)
+        proj_hy_get(p->hy);                             /* (a load, not a song section) */
 }
 static void slot_apply(uint32_t s, int all)            /* slot s (a song section) */
 {
     const proj_trk_t *tr[NTRK];
     slot_tracks(s, tr);
     proj_apply_tr((const project_t *)&proj_slot[s & 3u], tr, all);   /* (format 6's head is format 7's) */
+    if (all)
+        proj_hy_get(proj_slot_hy[s & 3u]);
 }
 
 #ifndef PROJ_HOST
@@ -657,17 +689,19 @@ static union {
 } proj_tmp;
 /* the fourth part of the format 6 project whose sum is s6, from record k of object obj (OBJ_PROJX: one a slot,
  * OBJ_AUTOX: one) into d; 0 = none (no record, or another project's). Through proj_tmp */
-static int proj_x_fetch(uint32_t obj, uint32_t k, uint32_t s6, proj_trk_t *d)
+static int proj_x_fetch(uint32_t obj, uint32_t k, uint32_t s6, proj_trk_t *d, uint8_t *hy)
 {
     int n = st_load(obj, &proj_tmp, sizeof proj_tmp);
     if (!s6 || n < (int)((k + 1u) * sizeof(proj_x_t)) || proj_tmp.x[k].sum6 != s6)
-        return 0;
+        return 0;                                       /* (HYPNO-1 records before stage 2 were shorter: none) */
     memcpy(d, &proj_tmp.x[k].t, sizeof *d);
+    memcpy(hy, proj_tmp.x[k].hy, HY_N);
     return 1;
 }
 /* a project as stored: format 6 p6 into obj6, then its fourth part t4 into record k of objx (nrec records there).
  * A cut between the two: the format 6 project with its fourth part empty. 0 = done */
-static int proj_store6(uint32_t obj6, uint32_t objx, uint32_t k, uint32_t nrec, const project_v6_t *p6, const proj_trk_t *t4)
+static int proj_store6(uint32_t obj6, uint32_t objx, uint32_t k, uint32_t nrec, const project_v6_t *p6, const proj_trk_t *t4,
+                       const uint8_t *hy)
 {
     uint32_t s6 = p6->sum;
     int n;
@@ -678,18 +712,21 @@ static int proj_store6(uint32_t obj6, uint32_t objx, uint32_t k, uint32_t nrec, 
         memset(proj_tmp.x, 0, nrec * sizeof(proj_x_t));   /* (none yet, or not readable: the others go empty) */
     proj_tmp.x[k].sum6 = s6;
     memcpy(&proj_tmp.x[k].t, t4, sizeof *t4);
+    memcpy(proj_tmp.x[k].hy, hy, HY_N);
     return st_save(objx, proj_tmp.x, nrec * sizeof(proj_x_t));
 }
 static int proj_store(uint32_t obj6, uint32_t objx, uint32_t k, uint32_t nrec, const project_t *p)   /* format 7 p */
 {
     proj_narrow(&proj_tmp.v6, 0, p);
-    return proj_store6(obj6, objx, k, nrec, &proj_tmp.v6, &p->t[NPART - 1u]);
+    return proj_store6(obj6, objx, k, nrec, &proj_tmp.v6, &p->t[NPART - 1u], p->hy);
 }
 /* the fourth part of slot s from flash, or empty (s6: its format 6 project's sum) */
 static void slot4_fetch(uint32_t s, uint32_t s6)
 {
-    if (!proj_x_fetch(OBJ_PROJX, s & 3u, s6, &proj_slot4[s & 3u]))
+    if (!proj_x_fetch(OBJ_PROJX, s & 3u, s6, &proj_slot4[s & 3u], proj_slot_hy[s & 3u])) {
         proj_trk_empty(&proj_slot4[s & 3u], NPART - 1u);
+        memset(proj_slot_hy[s & 3u], 0, HY_N);
+    }
 }
 static void proj_fetch(uint32_t slot)                   /* slot from flash (format 6, or an older one converted) */
 {
@@ -713,7 +750,7 @@ static void project_save(uint32_t slot)
     proj_capture_slot(slot);
 #if FELUCCA_FLASH
     if (flash_ok) {
-        ui_message(proj_store6(OBJ_PROJECT0 + slot, OBJ_PROJX, slot, 4u, &proj_slot[slot], &proj_slot4[slot]) ? "SAVE ERROR"
+        ui_message(proj_store6(OBJ_PROJECT0 + slot, OBJ_PROJX, slot, 4u, &proj_slot[slot], &proj_slot4[slot], proj_slot_hy[slot]) ? "SAVE ERROR"
                                                                                                              : "SAVED");
         return;
     }
@@ -756,7 +793,7 @@ static void project_erase(uint32_t slot)
 
 /* a project into the working one: the transport stops, everything sounding is released. h: its head, tr: its
  * tracks, sel: the track it had selected */
-static void project_apply_tr(const project_t *h, const proj_trk_t *const tr[NTRK], uint32_t sel)
+static void project_apply_tr(const project_t *h, const proj_trk_t *const tr[NTRK], uint32_t sel, const uint8_t *hy)
 {
     uint32_t k;
     transport_req = 2;
@@ -764,6 +801,7 @@ static void project_apply_tr(const project_t *h, const proj_trk_t *const tr[NTRK
     drum_mute = 0;                                      /* (the live mutes: a performance's, not the project's) */
     fm1_irq_off();                                      /* the audio ISR must not see half a project */
     proj_apply_tr(h, tr, 1);
+    proj_hy_get(hy);
     song.sel = (uint8_t)(sel < NTRK ? sel : 0u);
     fm1_irq_on();
     for (k = 0; k < NPART; k++)                         /* a format 1 project (tracks 2, 3), the fourth part of an older
@@ -781,13 +819,13 @@ static void project_apply(const project_t *p)          /* a format 7 project */
     uint32_t k;
     for (k = 0; k < NTRK; k++)
         tr[k] = &p->t[k];
-    project_apply_tr(p, tr, p->sel);
+    project_apply_tr(p, tr, p->sel, p->hy);
 }
 static void project_apply_slot(uint32_t s)
 {
     const proj_trk_t *tr[NTRK];
     slot_tracks(s, tr);
-    project_apply_tr((const project_t *)&proj_slot[s & 3u], tr, slot_sel(s));
+    project_apply_tr((const project_t *)&proj_slot[s & 3u], tr, slot_sel(s), proj_slot_hy[s & 3u]);
 }
 
 static void project_load(uint32_t slot)
@@ -861,7 +899,7 @@ static void autosave_resume(void)              /* power-on: the project as it wa
     s6 = n == (int)sizeof(project_v6_t) && proj6_ok(&proj_tmp.v6) ? proj_tmp.v6.sum : 0u;
     if (!proj_import(q, &proj_tmp, n))
         return;
-    if (proj_x_fetch(OBJ_AUTOX, 0u, s6, &q->t[NPART - 1u]))
+    if (proj_x_fetch(OBJ_AUTOX, 0u, s6, &q->t[NPART - 1u], q->hy))
         q->sum = proj_sum(q);
     autosave_hash = q->sum;
     if (drch_seed && !(q->rsv[0] & 0x80u) && q->g[G_DRCH] >= 0 && q->g[G_DRCH] <= 16 && q->g[G_DRCH] != midi_set[3]) {
@@ -1190,7 +1228,8 @@ static uint32_t project_restore(uint32_t slot, const void *raw, uint32_t n)
     }
     proj_narrow(&proj_slot[slot], 0, &autosave_buf);
     memcpy(&proj_slot4[slot], &autosave_buf.t[NPART - 1u], sizeof proj_slot4[slot]);
-    if (!flash_ok || proj_store6(OBJ_PROJECT0 + slot, OBJ_PROJX, slot, 4u, &proj_slot[slot], &proj_slot4[slot]))
+    memcpy(proj_slot_hy[slot], autosave_buf.hy, HY_N);
+    if (!flash_ok || proj_store6(OBJ_PROJECT0 + slot, OBJ_PROJX, slot, 4u, &proj_slot[slot], &proj_slot4[slot], proj_slot_hy[slot]))
         return 4;
     sec_dirty &= (uint8_t)~(1u << slot);
     return 0;
@@ -1234,7 +1273,7 @@ static void sections_write(void)                        /* the dirty sections an
 #if FELUCCA_FLASH
     if (flash_ok)
         for (i = 0; i < 4u; i++)
-            if (((sec_dirty >> i) & 1u) && proj_store6(OBJ_PROJECT0 + i, OBJ_PROJX, i, 4u, &proj_slot[i], &proj_slot4[i]) == 0)
+            if (((sec_dirty >> i) & 1u) && proj_store6(OBJ_PROJECT0 + i, OBJ_PROJX, i, 4u, &proj_slot[i], &proj_slot4[i], proj_slot_hy[i]) == 0)
                 sec_dirty &= (uint8_t)~(1u << i);       /* (a failed write stays dirty: tried again later) */
     if (!flash_ok)
 #endif

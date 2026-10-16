@@ -316,29 +316,55 @@ static int32_t gain_next(track_t *t)                    /* the track's mute gain
 }
 
 /* ---- DUCK: every kick (the drum track's KICK / KICK 2) dips the synth parts, which come back over an
- * eighth note: depth G_DUCK, the curve (1 - t / T)^2. drum_on sets drums.kick. */
+ * eighth note: depth G_DUCK, the curve (1 - t / T)^2. drum_on sets drums.kick.
+ * HYPNO-1 PUMP (the sidechain): the source is a lane group (G_SCSRC: KICK, RUMBLE, HATS, PERC; a group at level 0 still
+ * pumps when its steps play: a ghost) or BEAT (every beat: a kick that is never heard); the release G_SCREL (1/32 ..
+ * 1/4 note); each synth part dips by its own depth (G_SC1..4, at least G_DUCK: a SLOOP project as before), the reverb
+ * and delay returns by G_SCFX (mix_block), the RUMBLE by its DUCK (drums.c). e0 / e1: the curve, 1 at the hit */
 static struct {
     uint32_t t;                                         /* units since the kick */
-    int32_t g0, g1;                                     /* the parts' gain at the block start, end (Q15) */
-} duck = {0xFFFFFFFFu, 32767, 32767};
+    int32_t g0, g1;                                     /* the parts' gain at the block start, end (Q15): G_DUCK's */
+    int32_t e0, e1;                                     /* HYPNO-1: the envelope at the block start, end (Q15) */
+    uint32_t beat;                                      /* (BEAT: the beat last seen) */
+} duck = {0xFFFFFFFFu, 32767, 32767, 0, 0, 0};
 
+static uint32_t sc_len(void)                            /* G_SCREL in clock units: 1/32 1/16 1/8 3/16 1/4 */
+{
+    switch ((uint32_t)song.g[G_SCREL] % 5u) {
+    case 0: return BEAT_U / 8u;
+    case 1: return BEAT_U / 4u;
+    case 3: return BEAT_U * 3u / 4u;
+    case 4: return BEAT_U;
+    default: return BEAT_U / 2u;                        /* (1/8: SLOOP's) */
+    }
+}
+static int32_t duck_gain(int32_t depth127, int32_t env)   /* 1 - depth x env, Q15 */
+{
+    return 32767 - mulq15(depth127 * 258, env);
+}
 static void duck_block(uint32_t adv)
 {
-    int32_t depth = song.g[G_DUCK] * 258, x;
-    uint32_t len = BEAT_U / 2u;
+    uint32_t len = sc_len(), src = (uint32_t)song.g[G_SCSRC] % 5u, hit;
+    int32_t x;
     duck.g0 = duck.g1;
-    if (drums.kick) {
-        drums.kick = 0;
+    duck.e0 = duck.e1;
+    hit = src == 4u ? song.playing && clk_beat != duck.beat
+                    : src == DG_KICK ? drums.kick != 0 : (drums.trig & dg_lanes(src)) != 0;
+    duck.beat = clk_beat;
+    drums.kick = 0;
+    drums.trig = 0;
+    if (hit)
         duck.t = 0;
-    }
-    if (!depth || duck.t >= len) {
+    if (duck.t >= len) {
         duck.g1 = 32767;
+        duck.e1 = 0;
         return;
     }
     x = 32767 - (int32_t)((duck.t << 10) / (len >> 5));      /* 1 - t / T, Q15 (t < len < 2^21) */
     if (x < 0)
         x = 0;
-    duck.g1 = 32767 - mulq15(depth, mulq15(x, x));
+    duck.e1 = mulq15(x, x);
+    duck.g1 = duck_gain(song.g[G_DUCK], duck.e1);
     duck.t = duck.t + adv < duck.t ? 0xFFFFFFFFu : duck.t + adv;
 }
 
@@ -674,7 +700,11 @@ static void mix_part_run(track_t *t, uint32_t n)
         int32_t c = t->p[P_CHOR] * 258, d = send_thr(t->p[P_DLY] * 258, thr_dly), r = send_thr(t->p[P_REV] * 258, thr_rev);
         int32_t pk = t->peak;
         int32_t xmax = c > d ? c : d;
-        int32_t ga = mulq15(g0, duck.g0), gb = mulq15(g1, duck.g1);   /* mute x duck, ramped over the block */
+        int32_t dp = (uint32_t)(t - trk) < NPART ? song.g[G_SC1 + (uint32_t)(t - trk)] : 0;   /* (HYPNO-1 PUMP) */
+        int32_t ga, gb;
+        if (dp < song.g[G_DUCK])
+            dp = song.g[G_DUCK];
+        ga = mulq15(g0, duck_gain(dp, duck.e0)), gb = mulq15(g1, duck_gain(dp, duck.e1));   /* mute x duck, ramped */
         xmax = 0x7FFFFFFF / ((xmax > r ? xmax : r) | 1);   /* sends: loud chords at a high LEVEL */
         track_dist(t, b, n);
         if (t->p[P_ITYPE] | t->ins_run) {
@@ -1042,6 +1072,77 @@ static void texture_mix(int32_t *l, int32_t *r, uint32_t n)
         texture_reset(src);                             /* faded out: the new source from rest */
 }
 
+/* ---- HYPNO-1 RUMBLE (GLO > RUMBLE): the kick through a dark room, the low hum under hypnotic techno. The kick and the
+ * RUMBLE lane's kick 2 (drums.c rmb_in) into four comb filters, a dark one-pole in each loop (SIZE: their feedback),
+ * an allpass, two low-poles (TONE: 40 .. 250 Hz), a DC blocker, DRIVE (tanh), then dipped by the sidechain's curve
+ * (DUCK: the next kick comes through clean) at LEVEL (0: off, cleared), mono. All of it below 250 Hz: it runs at
+ * FS / 8 (5.5 kHz; its lines 2.6 KB) and is drawn back up by a linear interpolation. On the drum core (drum_block) */
+#define RB_D 8u
+static const uint16_t RB_LEN[5] = {211, 263, 331, 409, 97};   /* 38 48 60 74 ms, the allpass 18 ms (at FS / 8) */
+static int16_t rb_mem[211 + 263 + 331 + 409 + 97] __attribute__((section(".pool")));
+static struct {
+    uint16_t w[5];                                      /* each line's position */
+    int32_t damp[4];                                    /* each comb's loop filter */
+    int32_t lp1, lp2, dc;                               /* the TONE, the DC blocker */
+    int32_t y;                                          /* the last output at FS / 8 */
+    uint8_t on;                                         /* the lines hold sound */
+} rb;
+static void rumble_render(int32_t *l, int32_t *r, uint32_t n)
+{
+    int32_t fb = 22000 + song.g[G_RBSIZE] * 80, at = 1500 + song.g[G_RBTONE] * 61, drv = 16 + song.g[G_RBDRIVE];
+    int32_t lvl = song.g[G_RBLVL], ga = duck_gain(song.g[G_RBDUCK], duck.e0), gb = duck_gain(song.g[G_RBDUCK], duck.e1);
+    uint32_t j, i, k;
+    if (!lvl || n > CTL) {
+        if (rb.on) {                                    /* off: silent, from rest when it comes back */
+            memset(rb_mem, 0, sizeof rb_mem);
+            memset(&rb, 0, sizeof rb);
+        }
+        memset(rmb_in, 0, sizeof rmb_in);
+        return;
+    }
+    rb.on = 1;
+    for (j = 0; j * RB_D < n; j++) {
+        uint32_t m = n - j * RB_D < RB_D ? n - j * RB_D : RB_D, off = 0;
+        int32_t x = 0, sum = 0, y, y0 = rb.y;
+        for (i = 0; i < m; i++) {
+            x += rmb_in[j * RB_D + i];
+            rmb_in[j * RB_D + i] = 0;
+        }
+        x = (x / (int32_t)RB_D) >> 1;
+        for (k = 0; k < 4u; k++) {                      /* the combs */
+            int16_t *line = rb_mem + off;
+            uint32_t w = rb.w[k];
+            int32_t d = line[w];
+            rb.damp[k] += ((d - rb.damp[k]) * 13107) >> 15;   /* (0.4: dark) */
+            line[w] = (int16_t)clamp(x + mulq15(rb.damp[k], fb), -32767, 32767);
+            rb.w[k] = (uint16_t)(w + 1u >= RB_LEN[k] ? 0u : w + 1u);
+            sum += d;
+            off += RB_LEN[k];
+        }
+        {                                               /* the allpass */
+            int16_t *line = rb_mem + off;
+            uint32_t w = rb.w[4];
+            int32_t d = line[w], v = clamp((sum >> 2) + (d >> 1), -32767, 32767);
+            line[w] = (int16_t)v;
+            rb.w[4] = (uint16_t)(w + 1u >= RB_LEN[4] ? 0u : w + 1u);
+            y = d - (v >> 1);
+        }
+        rb.lp1 += mulq15(y - rb.lp1, at);               /* TONE: 12 dB / oct */
+        rb.lp2 += mulq15(rb.lp1 - rb.lp2, at);
+        rb.dc += (rb.lp2 - rb.dc) >> 7;                 /* (~7 Hz at FS / 8) */
+        y = softclip(clamp(((rb.lp2 - rb.dc) * drv) >> 4, -262143, 262143));   /* DRIVE */
+        rb.y = y;
+        for (i = 0; i < m; i++) {                       /* back up to FS, dipped, at LEVEL */
+            uint32_t p = j * RB_D + i;
+            int32_t s = y0 + (((y - y0) * (int32_t)(i + 1u)) >> 3);
+            int32_t g = ga + (((gb - ga) * (int32_t)p) >> CTL_LOG2);
+            s = (mulq15(s, g) * lvl) >> 6;
+            l[p] += s;
+            r[p] += s;
+        }
+    }
+}
+
 /* HYPNO-1: the drum track's block (its lanes, SLICER, INSERT, FILTER) into dk_*: by the second core while the first
  * renders the synth parts (mix_block), or inline with one core. It touches the drums' own state only (drums, the
  * drum track's SLICER, INSERT and filter slots, sl_dbuf; their hits and the random seed are taken at the note-ons,
@@ -1057,6 +1158,7 @@ static void drum_block(uint32_t n)
         dk_l[i] = dk_r[i] = dk_v[i] = dk_d[i] = 0;
     if (n <= CTL && djf_block(f, TDRUM->p[P_TFLT], &fc)) {   /* the drum track's FILTER: left, right, the sends */
         slicer_drums(dk_l, dk_r, dk_v, dk_d, n);
+        rumble_render(dk_l, dk_r, n);                   /* (HYPNO-1: through the drums' INSERT and FILTER too) */
         drum_insert(dk_l, dk_r, dk_v, dk_d, n);
         tflt_run(f, &fc, dk_l, n, 0);
         tflt_run(f, &fc, dk_r, n, 1);
@@ -1064,6 +1166,7 @@ static void drum_block(uint32_t n)
         tflt_run(f, &fc, dk_d, n, 3);
     } else {
         slicer_drums(dk_l, dk_r, dk_v, dk_d, n);    /* drums_render, through the SLICER when on */
+        rumble_render(dk_l, dk_r, n);
         if (n <= CTL && (TDRUM->p[P_ITYPE] | TDRUM->ins_run))
             drum_insert(dk_l, dk_r, dk_v, dk_d, n);     /* the INSERT (2.6), no FILTER */
     }
@@ -1116,6 +1219,14 @@ static void mix_block(int32_t *out, uint32_t n)
     texture_mix(mix_l, mix_r, n);                       /* GLO > TEXTURE (2.6): the bed, dry */
     punch_freeze_feed(send_r, mix_l, mix_r, n);         /* punch-in FREEZE: the dry mix into the held reverb */
     fx_buses(send_c, send_d, send_r, wet_l, wet_r, n);
+    if (song.g[G_SCFX] && n <= CTL) {                   /* HYPNO-1 PUMP: the reverb and delay returns breathe too */
+        int32_t a = duck_gain(song.g[G_SCFX], duck.e0), b = duck_gain(song.g[G_SCFX], duck.e1);
+        for (i = 0; i < n; i++) {
+            int32_t g = a + (((b - a) * (int32_t)i) >> CTL_LOG2);
+            wet_l[i] = mulq15(wet_l[i], g);
+            wet_r[i] = mulq15(wet_r[i], g);
+        }
+    }
     for (i = 0; i < n; i++) {
         mix_l[i] += wet_l[i];
         mix_r[i] += wet_r[i];

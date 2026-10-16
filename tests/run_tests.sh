@@ -55,6 +55,8 @@ $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/seq2_test" tests/seq2_test.c -lm
 run "sequencer 2.0: no drift, ratchets, roll, erase / undo, ghost / hard, chords, mute / solo, nudge, locks" "$OUT/seq2_test"
 $CC -O2 -w -Ibuild/gen -Ifirmware/src -Ifirmware/hal -o "$OUT/drumgrp_test" tests/drumgrp_test.c -lm
 run "HYPNO-1 drum lane groups: own loop lengths, polymeter, ratchets, recording, projects" "$OUT/drumgrp_test"
+$CC -O2 -w -Ibuild/gen -Ifirmware/src -Ifirmware/hal -o "$OUT/stage2_test" tests/stage2_test.c -lm
+run "HYPNO-1 stage 2: KICK tune / body, RUMBLE, PUMP sidechain (depth, ghost, BEAT, source)" "$OUT/stage2_test"
 
 $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/drumkit_test" tests/drumkit_test.c -lm
 run "synthesised drum kits: every kit x sound bounded, audible, finite, levels, cost" "$OUT/drumkit_test" "$OUT/drum-kits.wav" "$OUT/drum-kits.txt"

@@ -364,6 +364,67 @@ KITS = [
         RIDE=S(None, 320, src="cym", nlev=90, ndec=2400, filt=("bp", 6500, .35), hpf=3500, click=16),
         TOMLO=S("sine", 110, 3, 30, 6, 400, 106, 1.5, 40, 20, "white", 16, 0, 40, ("lp", 2000, .1)),
         TOMHI=S("sine", 160, 3, 30, 6, 340, 104, 1.5, 40, 20, "white", 16, 0, 40, ("lp", 2500, .1)))),
+    # -- HYPNO-1: techno, hypnotic, raw (the kick and its rumble also from GLO > KICK / RUMBLE)
+    ("BERLIN", "DARK TECHNO", 0, kit(K909,
+        KICK=S("sine", 48, 26, 22, 16, 460, 124, click=62, drive=84, src="white", nlev=44, ndec=8,
+               filt=("lp", 3400, .2)),
+        KICK2=S("sine", 45, 16, 34, 40, 1300, 124, click=24, drive=104, filt=("lp", 700, .3, "all")),   # the boom
+        SNARE=S("tri", 200, 6, 12, 0, 80, 84, 1.6, 60, 36, "white", 110, 0, 140, ("hp", 1800, .2), drive=40),
+        CLAP=dict(nlev=124, ndec=330, filt=("bp", 1500, .45), hpf=900),
+        CHH=S(None, 240, src="metal", nlev=114, ndec=30, filt=("hp", 9200, .35), hpf=8800, click=8),
+        OHH=S(None, 240, src="metal", nlev=110, nhold=10, ndec=300, filt=("hp", 8600, .35), hpf=8000),
+        RIDE=S(None, 310, src="cym", nlev=104, ndec=1100, filt=("bp", 7000, .5), hpf=4500, click=10),
+        SHAKER=S(None, src="white", nlev=92, nhold=6, ndec=45, filt=("bp", 8500, .35)),
+        CONGA=S("fm", 260, 10, 30, 2, 140, 108, click=20),                                    # FM perc
+        RIM=S("tri", 1800, 2, 4, 0, 18, 96, 1.47, 60, 50, "white", 50, 0, 6, ("bp", 2800, .45, "all"), drive=50),
+        COWBELL=S("fm", 900, 4, 5, 0, 60, 100, click=24),                                     # the tok
+        CLAVE=S("sine", 3200, 0, 5, 0, 22, 104, click=30),                                    # the tick
+        TOMLO=S("fm", 95, 20, 120, 8, 360, 116, drive=40),
+        TOMHI=S("fm", 145, 20, 120, 8, 300, 114, drive=40))),
+    ("HYPNO", "HYPNOTIC", 0, kit(K808,
+        KICK=S("sine", 52, 14, 18, 10, 320, 124, click=34, drive=22, filt=("lp", 2600, .1, "all")),
+        KICK2=S("sine", 44, 8, 40, 60, 950, 124, click=10, drive=40, filt=("lp", 500, .2, "all")),   # the sub
+        SNARE=S("tri", 1300, 0, 5, 0, 20, 88, 1.5, 50, 36, "white", 58, 0, 30, ("hp", 3200, .3)),   # a stick
+        SNARE2=S("sine", 240, 3, 10, 0, 50, 70, 1.6, 40, 20, "white", 70, 0, 90, ("bp", 3800, .3)),
+        CLAP=dict(nlev=108, ndec=420, filt=("bp", 1250, .4), hpf=800),
+        CHH=S(None, src="white", nlev=100, ndec=20, filt=("bp", 8800, .5), hpf=7500, click=6),   # NOISE BP
+        OHH=S(None, src="white", nlev=98, nhold=6, ndec=170, filt=("bp", 8200, .5), hpf=7000),
+        RIDE=S(None, 290, src="metal", nlev=96, ndec=1000, filt=("bp", 6000, .6), hpf=3500, click=8),
+        SHAKER=S(None, src="white", nlev=94, nhold=10, ndec=60, filt=("bp", 7000, .4)),
+        CONGA=S("sine", 250, 3, 20, 2, 140, 114, 1.5, 30, 18),                                 # bongo
+        RIM=S("sine", 1900, 0, 5, 0, 16, 100, 1.47, 50, 34),
+        COWBELL=S("bell", 700, 0, 5, 2, 90, 100, filt=("bp", 2800, .6, "all")),                  # BELL perc
+        CLAVE=S("sine", 2800, 0, 5, 0, 30, 104, click=16),
+        TOMLO=S("sine", 90, 6, 80, 8, 520, 118, 1.5, 30, 10, "white", 14, 0, 30, ("lp", 1600, .2)),   # dub toms
+        TOMHI=S("sine", 135, 6, 80, 8, 460, 116, 1.5, 30, 10, "white", 14, 0, 30, ("lp", 2000, .2)))),
+    ("HARDGRV", "HARDGROOVE", 0, kit(K909,
+        KICK=S("sine", 56, 32, 18, 10, 270, 124, click=92, drive=104, src="white", nlev=56, ndec=8,
+               filt=("lp", 5000, .2)),
+        KICK2=S("sine", 50, 22, 22, 16, 420, 124, click=70, drive=118),
+        SNARE=S("tri", 210, 8, 12, 0, 90, 92, 1.6, 60, 44, "white", 118, 4, 170, ("hp", 1400, .2), drive=60),
+        CLAP=dict(nlev=126, ndec=240, filt=("bp", 1700, .45), hpf=1000),
+        CHH=S(None, 235, src="cym", nlev=116, ndec=40, filt=("hp", 8800, .3), hpf=7800, click=12),
+        OHH=S(None, 235, src="cym", nlev=112, nhold=16, ndec=260, filt=("hp", 8200, .3), hpf=7200),
+        RIDE=S(None, 320, src="cym", nlev=110, ndec=1600, filt=("bp", 6800, .5), hpf=4200, click=16),
+        SHAKER=S(None, src="white", nlev=104, nhold=12, ndec=70, filt=("bp", 7500, .35)),
+        CONGA=S("fm", 300, 14, 30, 4, 180, 110, click=24, drive=30),
+        TOMLO=S("fm", 110, 26, 100, 8, 280, 116, drive=60), TOMHI=S("fm", 165, 26, 100, 8, 240, 114, drive=60),
+        COWBELL=S("bell", 560, 0, 5, 6, 200, 110, filt=("bp", 2500, .55, "all"), drive=30),
+        RIM=S("tri", 2000, 2, 4, 0, 20, 100, 1.47, 60, 56, "white", 60, 0, 6, ("bp", 3200, .4, "all"), drive=40))),
+    ("RAW", "RAW TECHNO", 0x13, kit(K909,
+        KICK=S("sine", 50, 30, 20, 14, 360, 124, click=100, drive=127, src="white", nlev=70, ndec=10,
+               filt=("lp", 3000, .3)),
+        KICK2=S("sine", 46, 20, 30, 30, 800, 124, click=50, drive=127, filt=("lp", 800, .4, "all")),
+        SNARE=S("tri", 180, 8, 14, 4, 130, 96, 1.6, 70, 50, "white", 122, 10, 260, ("hp", 1200, .2), drive=110),
+        CLAP=dict(nlev=127, ndec=300, filt=("bp", 1600, .5), hpf=900),
+        CHH=S(None, 220, src="metal", nlev=118, ndec=44, filt=("bp", 8000, .5), hpf=6500, click=14),
+        OHH=S(None, 220, src="metal", nlev=114, nhold=16, ndec=420, filt=("bp", 7600, .5), hpf=6000),
+        RIDE=S(None, 290, src="metal", nlev=108, ndec=1400, filt=("bp", 5600, .6), hpf=3500, click=14),
+        CRASH=S(None, 205, src="metal", nlev=116, nhold=10, ndec=2200, filt=("hp", 4200, .3)),
+        CONGA=S("fm", 220, 18, 40, 4, 200, 112, drive=80),
+        COWBELL=S("fm", 760, 6, 5, 2, 90, 104, click=30, drive=70),
+        TOMLO=S("fm", 85, 30, 200, 10, 420, 118, drive=110),
+        TOMHI=S("fm", 130, 30, 200, 10, 360, 116, drive=110))),
 ]
 
 

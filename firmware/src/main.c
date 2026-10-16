@@ -129,6 +129,9 @@ static void cpu_demo(void)
         for (l = 0; l < 12u; l++)
             dstep_set(&TDRUM->dstep[i], l, LV_NORM, l == 4u ? 3u : 0u);
     TDRUM->seq_active = 1;
+    song.g[G_RBLVL] = 100;                    /* stage 2: the RUMBLE and the PUMP on (their cost too) */
+    for (k = 0; k < NPART; k++)
+        song.g[G_SC1 + k] = 90;
     song.g[G_BPM] = 140;
     transport_req = 1;
 }

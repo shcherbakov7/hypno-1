@@ -382,8 +382,35 @@ int main(void)
         ok = proj_import(&a7, &w, (int)sizeof w) && !memcmp(&a7, &w, sizeof w) && !proj_import(&a7, &w, (int)sizeof w - 4);
         bad += check("FUN7 as a blob (the editor's backup): taken as it is; cut short: refused", ok);
         bad += check("FUN7 in RAM: 5 tracks; 4 part records fit one flash object; the slots stay format 6 in .noinit",
-                     sizeof(project_t) - sizeof(project_v6_t) - sizeof(proj_trk_t) < 4u && 4u * sizeof(proj_x_t) <= 3840u &&   /* (+ alignment) */
+                     sizeof(project_t) - sizeof(project_v6_t) - sizeof(proj_trk_t) - HY_N < 4u && 4u * sizeof(proj_x_t) <= 3840u &&   /* (+ alignment) */
                      sizeof proj_slot == 4u * sizeof(project_v6_t));
+    }
+
+    /* HYPNO-1 stage 2: the kick, rumble and sidechain globals ride in the block; an older project: the defaults */
+    {
+        static project_t a7;
+        static project_v6_t s6;
+        static proj_x_t xx;
+        host_tracks_init();
+        song.g[G_KTUNE] = -7, song.g[G_KBODY] = 40, song.g[G_RBLVL] = 100, song.g[G_RBTONE] = 3;
+        song.g[G_SCSRC] = 4, song.g[G_SCREL] = 0, song.g[G_SC2] = 99, song.g[G_SC4] = 127;
+        proj_capture(&a7);
+        proj_narrow(&s6, &xx, &a7);
+        memcpy(&w, &s6, sizeof s6);
+        proj_widen(&w, &xx);
+        song.g[G_KTUNE] = song.g[G_KBODY] = song.g[G_RBLVL] = song.g[G_SC2] = song.g[G_SC4] = 0;
+        song.g[G_SCSRC] = song.g[G_SCREL] = 0;
+        proj_apply(&w, 1);
+        ok = song.g[G_KTUNE] == -7 && song.g[G_KBODY] == 40 && song.g[G_RBLVL] == 100 && song.g[G_RBTONE] == 3 &&
+             song.g[G_SCSRC] == 4 && song.g[G_SCREL] == 0 && song.g[G_SC2] == 99 && song.g[G_SC4] == 127;
+        bad += check("stage 2: KICK / RUMBLE / PUMP through FUN7 -> FUN6 + record -> FUN7 -> apply: as they were", ok);
+        memcpy(&w, &s6, sizeof s6);
+        proj_widen(&w, 0);                             /* (no record: a SLOOP project) */
+        proj_apply(&w, 1);
+        ok = song.g[G_KTUNE] == 0 && song.g[G_RBLVL] == 0 && song.g[G_RBSIZE] == GP[G_RBSIZE].def && song.g[G_SCREL] == 2 &&
+             song.g[G_SC2] == 0;
+        bad += check("stage 2: a project without the block: the defaults (no rumble, no pump, the 1/8 release)", ok);
+        host_tracks_init();
     }
 
     /* capture / apply: the working project round trip (nudges and locks too) */

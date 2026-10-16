@@ -1004,8 +1004,8 @@ int main(int argc, char **argv)
         uint32_t j, w, ins_d = 0, flt_a = 0, flt_o = 0;
         #define K(n, v) do { encs[panel.enc[n]] = (v); frames(5); } while (0)
         #define WALK(fa_, ti_, hit_) do { open_family(fa_); frame(); \
-            for (j = 0; j < 12u; j++) { encs[panel.enc[EN_SELECT]] = -1; frame(); } \
-            for (j = 0; j < 12u; j++) { if (PAGES[ui.page].fam == (fa_) && !strcmp(PAGES[ui.page].title, ti_)) hit_ = 1; \
+            for (j = 0; j < 24u; j++) { encs[panel.enc[EN_SELECT]] = -1; frame(); } \
+            for (j = 0; j < 24u; j++) { if (PAGES[ui.page].fam == (fa_) && !strcmp(PAGES[ui.page].title, ti_)) hit_ = 1; \
                 encs[panel.enc[EN_SELECT]] = 1; frame(); } } while (0)
         song.playing = 0;
         song.sel = 0; steps_clear(&trk[0]); trk[0].p[P_SLEN] = 16; go_home(); frames(16);
@@ -1176,7 +1176,7 @@ int main(int argc, char **argv)
         release(B_GLO); frames(16);
         check(mlu.on == 1u && !mlu.pick, "GLO + F#3: MIDI LEARN on");
         open_family(FAM_FX); frame();
-        for (j = 0; j < 12u; j++) { encs[panel.enc[EN_SELECT]] = -1; frame(); }   /* the FX page: KNOB 1 = DIST */
+        for (j = 0; j < 24u; j++) { encs[panel.enc[EN_SELECT]] = -1; frame(); }   /* the FX page: KNOB 1 = DIST */
         frames(16);
         ui.force = 1; frame(); ppm("header-learn");
         K(EN_K1, 1);
@@ -1200,7 +1200,7 @@ int main(int argc, char **argv)
             uint32_t hit = 0;
             WALK(FAM_GLO, "MIDI", hit);
             open_family(FAM_GLO); frame();
-            for (j = 0; j < 12u && strcmp(PAGES[ui.page].title, "MIDI"); j++) { encs[panel.enc[EN_SELECT]] = 1; frame(); }
+            for (j = 0; j < 24u && strcmp(PAGES[ui.page].title, "MIDI"); j++) { encs[panel.enc[EN_SELECT]] = 1; frame(); }
             frames(16);
             K(EN_K2, 9);                                  /* CH2: 2 -> 11 */
             check(hit && !strcmp(PAGES[ui.page].title, "MIDI") && song.g[G_CH2] == 11, "GLO > MIDI: the page, KNOB 2 sets track 2's channel (11)");
@@ -1225,7 +1225,7 @@ int main(int argc, char **argv)
                 song.g[G_ROUTE] = 6;                      /* IN = CH 5 */
                 go_home(); frame();
                 open_family(FAM_GLO); frame();
-                for (j = 0; j < 12u && strcmp(PAGES[ui.page].title, "MIDI"); j++) { encs[panel.enc[EN_SELECT]] = 1; frame(); }
+                for (j = 0; j < 24u && strcmp(PAGES[ui.page].title, "MIDI"); j++) { encs[panel.enc[EN_SELECT]] = 1; frame(); }
                 check(!strcmp(ui.msg, "IN CH 5: SEL TRK ONLY"), "GLO > MIDI with IN = CH 5: says the channels are set aside");
                 song.g[G_ROUTE] = 0;
             }
@@ -1237,7 +1237,7 @@ int main(int argc, char **argv)
             WALK(FAM_GLO, "TEXTURE", h1);
             WALK(FAM_GLO, "TEXTURE 2", h2);
             open_family(FAM_GLO); frame();
-            for (j = 0; j < 12u && strcmp(PAGES[ui.page].title, "TEXTURE"); j++) { encs[panel.enc[EN_SELECT]] = 1; frame(); }
+            for (j = 0; j < 24u && strcmp(PAGES[ui.page].title, "TEXTURE"); j++) { encs[panel.enc[EN_SELECT]] = 1; frame(); }
             frames(16);
             K(EN_K1, 1);                                  /* SRC: OFF -> VINYL */
             check(h1 && h2 && song.g[G_TXSRC] == 1, "GLO > TEXTURE, TEXTURE 2: the pages; KNOB 1 the source (VINYL)");

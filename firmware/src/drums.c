@@ -39,6 +39,7 @@ static struct {
     dsv_t ds[NDRUM];
     volatile uint16_t hits;      /* bit per lane hit since the UI last looked (pads, key LEDs) */
     volatile uint8_t kick;       /* a kick was hit (fx.c DUCK) */
+    uint16_t trig;               /* HYPNO-1: bit per lane hit since the last block (fx.c duck_block: the sidechain) */
     int32_t a0, a1;              /* the drum track's mute / solo attenuation over this block (fx.c), Q15, 0 = heard */
 } drums = {.set = -2};
 
@@ -240,6 +241,19 @@ static void __attribute__((noinline)) drum_synth_on(uint32_t note, uint32_t vel,
     v->age = ++drums.age;
     drums.synth[i] = 1;
     drums.kit[i] = (uint8_t)kit;
+    if (note == 36u && (song.g[G_KTUNE] | song.g[G_KBODY] | song.g[G_KCLICK] | song.g[G_KDRIVE])) {
+        /* HYPNO-1 GLO > KICK: the kit's kick (lane 0), retuned, its body longer or shorter, its click, its drive; a
+         * copy for this voice (ds_on keeps the pointer while it sounds) */
+        static dsnd_t kick_d[NDRUM];
+        dsnd_t *d = &kick_d[i];
+        *d = snd[0];
+        d->pitch = (uint8_t)clamp((int32_t)d->pitch + song.g[G_KTUNE], 0, 127);
+        d->decay = (uint8_t)clamp((int32_t)d->decay + song.g[G_KBODY] / 4, 0, 127);
+        d->click = (uint8_t)clamp((int32_t)d->click + song.g[G_KCLICK] * 2, 0, 127);
+        d->drive = (uint8_t)clamp((int32_t)d->drive + song.g[G_KDRIVE], 0, 127);
+        ds_on(&drums.ds[i], d, crush, note, vel);
+        return;
+    }
     ds_on(&drums.ds[i], snd, crush, note, vel);
 }
 /* the editor's audition (editor_dsyn.c DSYN_PLAY): queued, played by the audio ISR (drum_audition_poll) */
@@ -263,8 +277,10 @@ static void drum_on(uint32_t note, uint32_t vel)
     voice_t *v = &drums.v[0];
     uint32_t i, zi = 0xFFFFu, kit = drum_kit();
     int32_t zid = -1;
-    if (note != 76u && note != 77u)                 /* the pads and key LEDs (not the click's wood block) */
+    if (note != 76u && note != 77u) {               /* the pads and key LEDs (not the click's wood block) */
         drums.hits |= (uint16_t)(1u << lane_of_note(note));
+        drums.trig |= (uint16_t)(1u << lane_of_note(note));   /* (the sidechain: a group's at level 0 too, a ghost) */
+    }
     if (note == 35u || note == 36u)
         drums.kick = 1;                             /* (DUCK; a kick group at level 0 still pumps: a ghost kick) */
     if (note != 76u && note != 77u) {               /* the lane group's level (HYPNO-1) */
@@ -347,9 +363,11 @@ static void drum_on(uint32_t note, uint32_t vel)
 
 /* adds the drums into the dry mix and the reverb and delay sends; mono != 0: into mono instead, before
  * the pan and the sends (the SLICER, slicer.c slicer_drums, does those after it) */
+/* HYPNO-1 RUMBLE's input (fx.c rumble_render): the kick and the RUMBLE lane's kick 2, dry, mono, this block */
+static int32_t rmb_in[CTL];
 static inline void drums_mix(int32_t *ml, int32_t *mr, int32_t *rev, int32_t *dly, int32_t *mono, uint32_t n)
 {
-    uint32_t k, i;
+    uint32_t k, i, tap = song.g[G_RBLVL] != 0;
     int32_t lvl = song.g[G_DRLVL] * 200, send = send_thr(song.g[G_DRREV] * 258, thr_rev),
             dsend = send_thr(song.g[G_DRDLY] * 258, thr_dly), pk = drums.peak;   /* (2.6: the THROWs) */
     int32_t pan = trk[TRK_DRUM].p[P_PAN], gl = 4096 - (pan > 0 ? pan * 64 : 0), gr = 4096 + (pan < 0 ? pan * 64 : 0);
@@ -374,6 +392,8 @@ static inline void drums_mix(int32_t *ml, int32_t *mr, int32_t *rev, int32_t *dl
             v->s[7] = s;
             if (s > pk || -s > pk)
                 pk = s < 0 ? -s : s;
+            if (tap && (v->note == 36u || v->note == 35u) && i < CTL)
+                rmb_in[i] += s;
             if (mono) {
                 mono[i] += s;
                 continue;
@@ -430,6 +450,8 @@ static inline void drums_mix(int32_t *ml, int32_t *mr, int32_t *rev, int32_t *dl
             v->s[7] = s;
             if (s > pk || -s > pk)
                 pk = s < 0 ? -s : s;
+            if (tap && (v->note == 36u || v->note == 35u) && i < CTL)
+                rmb_in[i] += s;
             if (mono) {
                 mono[i] += s;
                 continue;

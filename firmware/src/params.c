@@ -11,6 +11,8 @@ static const char *const N_LPOL[] = {"BI", "UNI"};
 /* GLO > MIDI (2.6): a synth track's MIDI channel, and the other channels */
 static const char *const N_MCH[] = {"OFF", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16"};
 static const char *const N_MOTH[] = {"SEL", "OFF"};
+static const char *const N_SCSRC[] = {"KICK", "RMBL", "HATS", "PERC", "BEAT"};   /* HYPNO-1: the sidechain's source */
+static const char *const N_SCREL[] = {"1/32", "1/16", "1/8", "3/16", "1/4"};     /* .. and its release */
 /* GLO > TEXTURE (2.6, fx.c texture_*): the bed's sources (the user slots last), its movement's length, when it plays */
 static const char *const N_TXSRC[] = {"OFF", "VINYL", "TAPE", "RAIN", "WIND", "RADIO", "ROOM", "USR1", "USR2", "USR3", "USR4"};
 static const char *const N_TXRATE[] = {"1BAR", "2BAR", "4BAR", "8BAR", "16BAR"};
@@ -196,7 +198,23 @@ static const param_desc_t GP[G_COUNT] = {
     [G_TXWHEN] = PE("WHEN", N_TXWHEN, 0),         /* PLAY: while the transport runs (fades in / out); ALWAYS */
     [G_TXDUCK] = PE("DUCK", N_ONOFF, 0),          /* ON: the kick pumps it too (GLO > MASTER > DUCK) */
     [G_BEND] = PD("BEND", F_SEMI, 1, 12, 2),
-    [G_CH4] = PE("CH4", N_MCH, 4),                /* HYPNO-1: synth track 4's channel */      /* 2.6, GLO > MIDI 2: MIDI pitch bend's range (a setting of the FM-1) */
+    [G_CH4] = PE("CH4", N_MCH, 4),                /* HYPNO-1: synth track 4's channel */
+    [G_KTUNE] = PD("TUNE", F_SEMI, -12, 12, 0),   /* HYPNO-1 KICK: the kit's kick, offsets (0: as the kit has it) */
+    [G_KBODY] = PD("BODY", F_INT, -64, 63, 0),
+    [G_KCLICK] = PD("CLICK", F_INT, -64, 63, 0),
+    [G_KDRIVE] = PD("DRIVE", F_PCT, 0, 127, 0),
+    [G_RBLVL] = PD("LEVEL", F_PCT, 0, 127, 0),    /* HYPNO-1 RUMBLE: 0 = off */
+    [G_RBSIZE] = PD("SIZE", F_PCT, 0, 127, 80),
+    [G_RBTONE] = PD("TONE", F_PCT, 0, 127, 50),
+    [G_RBDRIVE] = PD("DRIVE", F_PCT, 0, 127, 30),
+    [G_RBDUCK] = PD("DUCK", F_PCT, 0, 127, 90),
+    [G_SCSRC] = PE("SRC", N_SCSRC, 0),            /* HYPNO-1 PUMP: the sidechain */
+    [G_SCREL] = PE("REL", N_SCREL, 2),
+    [G_SCFX] = PD("FX", F_PCT, 0, 127, 0),
+    [G_SC1] = PD("ACID", F_PCT, 0, 127, 0),
+    [G_SC2] = PD("BASS", F_PCT, 0, 127, 0),
+    [G_SC3] = PD("MELO", F_PCT, 0, 127, 0),
+    [G_SC4] = PD("ATMS", F_PCT, 0, 127, 0),      /* 2.6, GLO > MIDI 2: MIDI pitch bend's range (a setting of the FM-1) */
 };
 
 static const param_desc_t DRUM_KIT_DESC = PE("KIT", DRUM_KIT_NAMES, 0);
@@ -422,6 +440,11 @@ static const page_t PAGES[] = {
     {"MIDI 2", FAM_GLO, SC_GLOBAL, GR_NONE, {G_ROUTE, G_CHOTH, G_MIDI, G_BEND}},   /* 2.6: IN, OTHER, OUT, BEND: every MIDI
                                                                            * setting in these two pages (IN and OUT on
                                                                            * SYSTEM too, the drums' channel on DRUMS) */
+    {"KICK", FAM_GLO, SC_GLOBAL, GR_NONE, {G_KTUNE, G_KBODY, G_KCLICK, G_KDRIVE}},       /* HYPNO-1: the kick */
+    {"RUMBLE", FAM_GLO, SC_GLOBAL, GR_NONE, {G_RBLVL, G_RBSIZE, G_RBTONE, G_RBDRIVE}},   /* .. through a dark room */
+    {"RUMBLE 2", FAM_GLO, SC_GLOBAL, GR_NONE, {G_RBDUCK, 0xFF, 0xFF, 0xFF}},
+    {"PUMP", FAM_GLO, SC_GLOBAL, GR_NONE, {G_SC1, G_SC2, G_SC3, G_SC4}},                 /* the sidechain: depths */
+    {"PUMP 2", FAM_GLO, SC_GLOBAL, GR_NONE, {G_SCSRC, G_SCREL, G_SCFX, G_DUCK}},         /* .. its source, release */
     {"TEXTURE", FAM_GLO, SC_GLOBAL, GR_NONE, {G_TXSRC, G_TXLVL, G_TXTONE, G_TXMOVE}},   /* 2.6: the bed under the mix */
     {"TEXTURE 2", FAM_GLO, SC_GLOBAL, GR_NONE, {G_TXRATE, G_TXWHEN, G_TXDUCK, 0xFF}},
     {"PRESETS", FAM_SAVE, SC_GLOBAL, GR_BROWSE, {0xFF, 0xFF, 0xFF, 0xFF}},   /* browser: PRESETS knob / KNOB 1 */

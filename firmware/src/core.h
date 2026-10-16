@@ -96,6 +96,11 @@ enum {                          /* global parameters */
                                              * In a project (project.c: the spare bytes) */
     G_BEND,                     /* SLOOP 2.6, GLO > MIDI 2: the pitch bend's range, 1..12 semitones (a setting of the FM-1) */
     G_CH4,                      /* HYPNO-1, GLO > MIDI: synth track 4's channel (a setting of the FM-1, as G_CH1..3) */
+    /* HYPNO-1 stage 2, the project's (project.c proj_hy_*: in the fourth part's record, not in g[]): */
+    G_KTUNE, G_KBODY, G_KCLICK, G_KDRIVE,     /* GLO > KICK: the kit's kick, retuned, longer / shorter, clicked, driven */
+    G_RBLVL, G_RBSIZE, G_RBTONE, G_RBDRIVE, G_RBDUCK,   /* GLO > RUMBLE: the kick through a dark room (drums.c rumble_*) */
+    G_SCSRC, G_SCREL, G_SCFX,                 /* GLO > PUMP 2: the sidechain's source, release, the FX returns' depth */
+    G_SC1, G_SC2, G_SC3, G_SC4,               /* GLO > PUMP: each synth part's depth (fx.c duck_block) */
     G_COUNT
 };
 
