@@ -26,6 +26,7 @@ enum { V_POLY, V_MONO, V_LEGATO, V_UNISON };   /* P_VOICE */
 #define ENGI_PHYS 10u
 #define ENGI_NOISE 11u
 #define ENGI_SLICE 12u           /* with FELUCCA_SLICE: after NOISE */
+#define ENGI_ACID 7u             /* HYPNO-1: the 303 (eng_acid.c), where SLOOP had WHEEL */
 #define ENGI_FM6 9u              /* the FM6 engine's index (eng_fm6.c, the stores: append-only) */
 #define UP_SLOTS 32u             /* user presets (upreset.c) */
 #define NELEM(a) (sizeof(a) / sizeof((a)[0]))

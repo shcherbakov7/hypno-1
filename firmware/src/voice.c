@@ -353,7 +353,7 @@ static void mono_play(track_t *t, uint32_t note, uint32_t vel, int retrig, int g
         } else {                                            /* legato: new pitch, same envelope */
             v->note = (uint8_t)note;
             v->pitch16 = (int32_t)note * 16;
-            if (vel > v->vel && nv == 1u)
+            if ((vel > v->vel || ENGINES[t->engine] == &ENG_ACID) && nv == 1u)   /* (ACID: each note its accent) */
                 v->vel = (uint8_t)vel;
             glide_set(t, v, glide);
         }
@@ -796,7 +796,7 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
                 m.inc += (uint32_t)((int32_t)(m.inc >> 12) * m.fine);
         }
         m.cutoff = ((lfo * p[P_LD_FLT]) >> 7) + ((m.envq15 * p[P_ED_FLT]) >> 7);
-        if (v->vel > 110)                               /* accent opens the filter with the env */
+        if (v->vel > 110 && e != &ENG_ACID)             /* accent opens the filter with the env (ACID: its own sweep) */
             m.cutoff += (m.envq15 * 24) >> 7;
         m.shape = (64 << 8) + ((lfo * p[P_LD_SHP]) >> 7) + ((m.envq15 * p[P_ED_SHP]) >> 7);
         e->render(t, v, out, n, &m);

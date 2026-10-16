@@ -971,7 +971,11 @@ int main(int argc, char **argv)
             static int32_t o2[CTL * 2];
             song.master_q12 = 0; frames(20);
             for (j = 0; j < SCOPE_N; j++) { uint32_t a = (uint32_t)(scope_buf[j] < 0 ? -scope_buf[j] : scope_buf[j]); if (a > pk) pk = a; }
-            for (b = 0; b < 200u; b++) { mix_block(o2, CTL); for (j = 0; j < CTL * 2u; j++) { uint32_t a = (uint32_t)(o2[j] < 0 ? -o2[j] : o2[j]); if (a > op) op = a; } }
+            for (b = 0; b < 350u; b++) {          /* (after 150 blocks: the DC blocker after MASTER settles, ~93 ms;
+                                                 * a deep bass leaves it a tail) */
+                mix_block(o2, CTL);
+                for (j = 0; j < CTL * 2u && b >= 150u; j++) { uint32_t a = (uint32_t)(o2[j] < 0 ? -o2[j] : o2[j]); if (a > op) op = a; }
+            }
             ui.force = 1; frames(2);
             for (lit = 0, x = 0; x < 240u * 240u; x++) lit += screen[x] != 0;
             check(op < 64u && pk > 2000u && lit > 1500u, "visualiser: MASTER at 0: no sound, the picture as at full volume");

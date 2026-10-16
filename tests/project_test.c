@@ -206,8 +206,8 @@ int main(void)
     bad += check("FUN2 -> FUN6: every parameter mapped, SLICER OFF, CHORD OFF (4 tracks)", ok);
     bad += check("FUN2 -> FUN6: engine bytes kept (WHEEL 7, ANALOG 0, TRIO 6), drum 0",
                  q.t[0].engine == 7 && q.t[1].engine == 0 && q.t[2].engine == 6 && q.t[3].engine == 0 &&
-                 eng_retired(7) && eng_live(7) == 0u && str_eq(ENGINES[6]->name, "TRIO") && NENGINES > 8);   /* (HYPNO-1: WHEEL
-                                                                                         * retired: kept, plays ANALOG) */
+                 !eng_retired(7) && eng_live(7) == ENGI_ACID && str_eq(ENGINES[6]->name, "TRIO") && NENGINES > 8);   /* (HYPNO-1:
+                                                                                         * WHEEL's number is ACID's now) */
 
     /* a FUN4 image (SLOOP 2.0 .. 2.3, as stored) -> FUN5: the same, zero nudges, every lock free */
     memset(&v4, 0, sizeof v4);

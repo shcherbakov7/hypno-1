@@ -55,7 +55,7 @@ int main(int argc, char **argv)
     for (e = 0; e < NENGINES; e++)
         for (pi = 0; pi < ENGINES[e]->npresets; pi++) {
             const char *name = ENGINES[e]->presets[pi].name;
-            int role = role_of(name);
+            int role = e == ENGI_ACID ? R_BASS : role_of(name);   /* (HYPNO-1: every 303 a bass line) */
             host_tracks_init();
             song.g[G_BPM] = 100;
             host_preset(&trk[0], e, pi);
