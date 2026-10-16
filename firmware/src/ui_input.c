@@ -223,6 +223,10 @@ static void ui_leds(void)
         led_pos_init();
         ready = 1;
     }
+    if (ui.layer == LY_DICE) {                     /* DICE: its two buttons */
+        led_put(nl, panel.btn[B_ARP], 1);
+        led_put(nl, panel.btn[B_SEQ], 1);
+    } else
     led_put(nl, panel.btn[ui.layer != LY_PLAY ? LAYER_BTN[ui.layer] : cur_btn()],
             ly_lock == LY_PLAY || ((fm1_ms / 300u) & 1u) != 0u || (fm1_in.buttons & ly_bit[ly_lock % LY_COUNT]) != 0u);   /* locked: blinks */
     led_put(nl, panel.btn[B_PLAY], play_led() || (song.playing && !song.rec && ft_on) ||
@@ -760,7 +764,25 @@ static int layers_input(uint32_t note_edges, uint32_t *pressed, uint32_t home)
         if (d && held == LY_PLAY)
             held = l;
     }
-    if (held != LY_PLAY && home == BT_TAP && !home_eat) {  /* held + HOME: locked open */
+    {   /* HYPNO-1 DICE: ARP and SEQ held together. Coming in rolls the selected track (the drums: the beat); OCT- / OCT+
+         * the roll before / after */
+        static uint8_t dice_in;
+        if (down[LY_ROLL] && down[LY_STEP]) {
+            if (!dice_in && !ui.menu)
+                dice_roll(dice_target_sel());
+            dice_in = 1;
+            held = LY_DICE;
+            used[LY_ROLL] = used[LY_STEP] = 1;            /* (no tap of either on the way out) */
+            if (*pressed & (1u << panel.btn[B_OCTDN]))
+                dice_step(-1);
+            if (*pressed & (1u << panel.btn[B_OCTUP]))
+                dice_step(1);
+            *pressed &= ~((1u << panel.btn[B_OCTDN]) | (1u << panel.btn[B_OCTUP]));
+        } else {
+            dice_in = 0;
+        }
+    }
+    if (held != LY_PLAY && held != LY_DICE && home == BT_TAP && !home_eat) {  /* held + HOME: locked open */
         ly_lock = (uint8_t)held;
         used[held] = 1;
         ui.layer = (uint8_t)held;

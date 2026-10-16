@@ -102,6 +102,7 @@ enum {                          /* global parameters */
     G_RBLVL, G_RBSIZE, G_RBTONE, G_RBDRIVE, G_RBDUCK,   /* GLO > RUMBLE: the kick through a dark room (drums.c rumble_*) */
     G_SCSRC, G_SCREL, G_SCFX,                 /* GLO > PUMP 2: the sidechain's source, release, the FX returns' depth */
     G_SC1, G_SC2, G_SC3, G_SC4,               /* GLO > PUMP: each synth part's depth (fx.c duck_block) */
+    G_DSTYLE, G_DDENS, G_DWILD,               /* HYPNO-1 stage 4, the DICE layer: its style, density, wildness (dice.c) */
     G_COUNT
 };
 

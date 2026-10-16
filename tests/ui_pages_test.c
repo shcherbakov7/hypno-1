@@ -1275,6 +1275,39 @@ int main(int argc, char **argv)
         ui.arm = 0; song.g[G_SLOT] = 1;
         go_home(); frames(4);
     }
+    {   /* HYPNO-1 DICE: ARP + SEQ held together: a roll of the selected track, its layer; a white key rolls its target,
+         * OCT- the roll before; let go, EDIT + OCT- undoes the roll */
+        static step_t before[NSTEP];
+        uint32_t n0, pg0, hm0;
+        go_home(); frames(4);
+        song.sel = 0; steps_clear(&trk[0]);
+        trk[0].step[5].time = ST_NOTE, trk[0].step[5].n = 1, trk[0].step[5].note[0] = 61;
+        memcpy(before, trk[0].step, sizeof before);
+        n0 = dice_n;
+        pg0 = ui.page, hm0 = ui.home;
+        edges_btn |= BT(B_ARP) | BT(B_SEQ); fm1_in.buttons |= BT(B_ARP) | BT(B_SEQ); frames(12);
+        check(ui.layer == LY_DICE && dice_n == n0 + 1u && dice_hist[dice_at].target == DT_T1 &&
+              memcmp(before, trk[0].step, sizeof before) != 0, "DICE: ARP + SEQ held: the DICE layer, track 1 rolled (a new line)");
+        ui.force = 1; frame(); ppm("layer-dice");
+        fm1_in.notes = 1u << key_of_white(1); frame(); fm1_in.notes = 0; frames(2);
+        check(dice_hist[dice_at].target == DT_KICK && dice_n == n0 + 2u, "DICE: the 2nd white key rolls the kick");
+        edges_btn |= BT(B_OCTDN); fm1_in.buttons |= BT(B_OCTDN); frame(); fm1_in.buttons &= ~BT(B_OCTDN); frames(2);
+        check(dice_at + 2u == dice_n && dice_hist[dice_at].target == DT_T1 && song.octave == 0,
+              "DICE: OCT- the roll before (no octave change)");
+        encs[panel.enc[EN_K1]] = 1; frame();
+        check(song.g[G_DSTYLE] == DS_ACID, "DICE: KNOB 1 the style (HYPNOTIC -> ACID)");
+        fm1_in.buttons &= ~(BT(B_ARP) | BT(B_SEQ)); frames(12);
+        check(ui.layer == LY_PLAY && ui.page == pg0 && ui.home == hm0, "DICE: let go: no layer, no page opened by the taps");
+        memcpy(before, trk[0].step, sizeof before);
+        dice_roll(DT_T1);
+        check(memcmp(before, trk[0].step, sizeof before) != 0, "DICE: another roll of track 1 ..");
+        edges_btn |= BT(B_EDIT); fm1_in.buttons |= BT(B_EDIT); frame();
+        edges_btn |= BT(B_OCTDN); fm1_in.buttons |= BT(B_OCTDN); frame(); fm1_in.buttons &= ~BT(B_OCTDN); frame();
+        fm1_in.buttons &= ~BT(B_EDIT); frames(4);
+        check(!memcmp(before, trk[0].step, sizeof before), "  .. EDIT + OCT- undoes it (the steps as before it)");
+        song.g[G_DSTYLE] = 0;
+        steps_clear(&trk[0]); go_home(); frames(4);
+    }
     {   /* fuzz: 20000 frames of random buttons (held or tapped), knobs and keys, with the audio running
          * between frames; every draw stays on the screen (lcd_blit / lcd_fill assert it) */
         uint32_t f, seed = 777, held = 0;

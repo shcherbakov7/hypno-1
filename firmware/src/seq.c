@@ -142,7 +142,9 @@ static uint32_t scale_mask(const track_t *t)
 }
 
 /* ---------------------------------------------------------- layers --- */
-enum { LY_PLAY, LY_FX, LY_ERASE, LY_ROLL, LY_STEP, LY_SCALE, LY_MIX, LY_SONG, LY_COUNT };
+enum { LY_PLAY, LY_FX, LY_ERASE, LY_ROLL, LY_STEP, LY_SCALE, LY_MIX, LY_SONG,
+       LY_DICE,                          /* HYPNO-1: ARP and SEQ held together (dice.c); no button of its own */
+       LY_COUNT };
 static uint32_t ly_bit[LY_COUNT];        /* the button (fm1_in.buttons bit) of each layer: the UI sets them */
 static uint32_t dyn_bit[2];              /* OCT- / OCT+: ghost / hard on the drum track */
 /* a layer locked open (its button held + HOME tapped: ui_input.c), LY_PLAY = none: the keys and knobs
@@ -154,6 +156,8 @@ static uint32_t layer_buttons(void) { return fm1_in.buttons | (ly_lock != LY_PLA
 static uint32_t layer_now(void)
 {
     uint32_t b = layer_buttons(), l;
+    if ((b & ly_bit[LY_ROLL]) && (b & ly_bit[LY_STEP]) && ly_bit[LY_ROLL])
+        return LY_DICE;
     for (l = LY_FX; l < LY_COUNT; l++)
         if (b & ly_bit[l])
             return l;
@@ -1514,7 +1518,8 @@ static void key_down(uint32_t k)
     case LY_STEP:
     case LY_SCALE:
     case LY_MIX:
-    case LY_SONG:                                     /* the UI's: steps, the key, the mix, the sections */
+    case LY_SONG:                                     /* the UI's: steps, the key, the mix, the sections, DICE */
+    case LY_DICE:
         kb_kind[k] = KS_UI;
         kb_nt[k][0] = (uint8_t)layer;                 /* (its key-up goes to the same layer) */
         lk_push(layer, k, 1);
@@ -2681,3 +2686,5 @@ static void events_block(uint32_t n)
 #endif
     }
 }
+
+#include "dice.c"            /* HYPNO-1: DICE, a beat or a line from one roll */

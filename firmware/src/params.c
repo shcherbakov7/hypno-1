@@ -12,6 +12,7 @@ static const char *const N_LPOL[] = {"BI", "UNI"};
 static const char *const N_MCH[] = {"OFF", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16"};
 static const char *const N_MOTH[] = {"SEL", "OFF"};
 static const char *const N_SCSRC[] = {"KICK", "RMBL", "HATS", "PERC", "BEAT"};   /* HYPNO-1: the sidechain's source */
+static const char *const N_DSTYLE[] = {"HYPNOTIC", "ACID", "HARDGRV", "DUB", "INDUSTR", "ROLLING"};   /* dice.c DS_* */
 static const char *const N_SCREL[] = {"1/32", "1/16", "1/8", "3/16", "1/4"};     /* .. and its release */
 /* GLO > TEXTURE (2.6, fx.c texture_*): the bed's sources (the user slots last), its movement's length, when it plays */
 static const char *const N_TXSRC[] = {"OFF", "VINYL", "TAPE", "RAIN", "WIND", "RADIO", "ROOM", "USR1", "USR2", "USR3", "USR4"};
@@ -215,6 +216,9 @@ static const param_desc_t GP[G_COUNT] = {
     [G_SC2] = PD("BASS", F_PCT, 0, 127, 0),
     [G_SC3] = PD("MELO", F_PCT, 0, 127, 0),
     [G_SC4] = PD("ATMS", F_PCT, 0, 127, 0),      /* 2.6, GLO > MIDI 2: MIDI pitch bend's range (a setting of the FM-1) */
+    [G_DSTYLE] = PE("STYLE", N_DSTYLE, 0),         /* HYPNO-1 DICE (dice.c): HYPNOTIC .. ROLLING */
+    [G_DDENS] = PD("DENS", F_PCT, 0, 127, 64),
+    [G_DWILD] = PD("WILD", F_PCT, 0, 127, 48),
 };
 
 static const param_desc_t DRUM_KIT_DESC = PE("KIT", DRUM_KIT_NAMES, 0);

@@ -38,7 +38,7 @@
 #define PROJ_NG 32u                            /* the globals of formats 4 and 5 (G_COUNT until 2.4). SLOOP 2.5's
                                                 * G_DRDLY rides in the byte after sel (0 in older projects: off),
                                                 * so the format and its size do not change */
-_Static_assert(G_DRDLY == PROJ_NG && G_TXSRC == PROJ_NG + 5u && G_COUNT == G_SC4 + 1u,
+_Static_assert(G_DRDLY == PROJ_NG && G_TXSRC == PROJ_NG + 5u && G_COUNT == G_DWILD + 1u,
                "the globals a project holds, then G_DRDLY (then 2.6's GLO > MIDI: settings of the FM-1)");
 #define PROJ_NC6 ((uint32_t)P_ITYPE)           /* format 6: the parameters kept in 16 bits, P_LEVEL .. P_VLEAD (as 5), */
 #define PROJ_NX6 ((uint32_t)(P_E0 - P_ITYPE))  /* the 2.6 ones in a byte (0..127), then P_E0 .. P_E7 */
@@ -394,7 +394,7 @@ static int proj_import6(project_v6_t *q, const void *b, int n)
 #define PROJ_MAGIC 0x46554E37u                 /* "FUN7" */
 #define HY_N 20u                               /* HYPNO-1 stage 2: [0] its version (1; 0 = none: the defaults), [1..]
                                                 * G_KTUNE .. G_SC4 a byte each (proj_hy_put / proj_hy_get) */
-#define HY_VER 1u
+#define HY_VER 2u                              /* 1: stage 2 (G_KTUNE .. G_SC4); 2: + the DICE settings */
 typedef struct {
     uint32_t magic, size;
     int16_t g[PROJ_NG];
@@ -410,7 +410,7 @@ typedef struct {
 } proj_x_t;
 _Static_assert(NT6 == NPART && T6_DRUM == NPART - 1u && TRK_DRUM == NPART, "format 6: parts 1..3, the drums; 7: + part 4");
 _Static_assert(4u * sizeof(proj_x_t) <= 3840u, "the four slots' fourth parts fit one flash object");
-_Static_assert(G_SC4 - G_KTUNE + 2u <= HY_N, "the HYPNO-1 block holds every stage 2 global");
+_Static_assert(G_DWILD - G_KTUNE + 2u <= HY_N, "the HYPNO-1 block holds every HYPNO-1 global");
 /* the four slots (the song sections A..D) as flash keeps them: format 6 in .noinit RAM (they survive resets; there
  * is no room there for more), the fourth parts in the pool (refilled from flash at power-on: project_boot) */
 project_v6_t proj_slot[4] __attribute__((section(".noinit")));
@@ -422,14 +422,15 @@ static void proj_hy_put(uint8_t *hy)
     uint32_t i;
     memset(hy, 0, HY_N);
     hy[0] = HY_VER;
-    for (i = G_KTUNE; i <= G_SC4; i++)
+    for (i = G_KTUNE; i <= G_DWILD; i++)
         hy[1u + i - G_KTUNE] = (uint8_t)(int8_t)song.g[i];
 }
 static void proj_hy_get(const uint8_t *hy)     /* version 0 (an older project, no record): the defaults */
 {
     uint32_t i;
-    for (i = G_KTUNE; i <= G_SC4; i++)
-        song.g[i] = (int16_t)(hy && hy[0] == HY_VER ? clamp((int8_t)hy[1u + i - G_KTUNE], GP[i].min, GP[i].max) : GP[i].def);
+    for (i = G_KTUNE; i <= G_DWILD; i++)                 /* (version 1: the stage 2 ones; the DICE settings after) */
+        song.g[i] = (int16_t)(hy && (hy[0] == HY_VER || (hy[0] == 1u && i <= G_SC4)) ?
+                              clamp((int8_t)hy[1u + i - G_KTUNE], GP[i].min, GP[i].max) : GP[i].def);
 }
 static uint32_t proj_sum(const project_t *p) { return proj_hash(p, sizeof *p - 4u); }
 static int proj_ok(const project_t *q) { return q->magic == PROJ_MAGIC && q->size == sizeof *q && q->sum == proj_sum(q); }

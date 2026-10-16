@@ -20,8 +20,8 @@
  * The keys' part runs in the audio ISR (seq.c layer_now: no lag, no lost press); the SEQ, SEL and
  * GLO keys come to the UI through seq.c lk_q. HOLD: REC held clears the track, SAVE held saves the
  * project (a ring fills; let go before and nothing happens). */
-static const uint8_t LAYER_BTN[LY_COUNT] = {NB, B_FX, B_EDIT, B_ARP, B_SEQ, B_SCL, B_GLO, B_SAVE};
-static const char *const LAYER_NAME[LY_COUNT] = {"", "punch", "erase", "roll", "steps", "key", "mix", "song"};
+static const uint8_t LAYER_BTN[LY_COUNT] = {NB, B_FX, B_EDIT, B_ARP, B_SEQ, B_SCL, B_GLO, B_SAVE, NB};   /* (DICE: ARP + SEQ) */
+static const char *const LAYER_NAME[LY_COUNT] = {"", "punch", "erase", "roll", "steps", "key", "mix", "song", "dice"};
 static void section_store(uint32_t s);                  /* project.c */
 static void section_load(uint32_t s);
 static uint8_t sec_armed;                               /* store over a used section: the key again within 3 s */
@@ -35,8 +35,9 @@ static uint8_t chain_tap[CHAIN_MAX], chain_taps;        /* the section keys tapp
 static void layers_init(void)
 {
     uint32_t l;
-    for (l = LY_FX; l < LY_COUNT; l++)
+    for (l = LY_FX; l < LY_DICE; l++)
         ly_bit[l] = 1u << panel.btn[LAYER_BTN[l]];
+    ly_bit[LY_DICE] = 0;                                /* (no button: ARP and SEQ together, seq.c layer_now) */
     dyn_bit[0] = 1u << panel.btn[B_OCTDN];
     dyn_bit[1] = 1u << panel.btn[B_OCTUP];
     ft_btn_mask = 1u << panel.btn[B_REC];
@@ -339,6 +340,12 @@ static void layer_key(uint32_t layer, uint32_t k, uint32_t down)
         return;
     }
     switch (layer) {
+    case LY_DICE:                                       /* white keys 1..9: roll the beat, a group, a synth track */
+        if (w >= 0 && (uint32_t)w < DT_COUNT) {
+            dice_roll((uint32_t)w);
+            ui.force = 1;
+        }
+        return;
     case LY_STEP:
         if (w < 0) {                                    /* the first four black keys: pages 1..4 */
             static const int8_t PG[12] = {-1, 0, -1, 1, -1, 2, -1, -1, 3, -1, -1, -1};
@@ -554,6 +561,12 @@ static void layer_knobs(uint32_t layer)
             } else if (!is_drum(t)) {
                 t->p[P_TRANS] = (int16_t)clamp(t->p[P_TRANS] + s, -24, 24);
             }
+            break;
+        case LY_DICE:                                   /* STYLE  DENS  WILD (the next roll's) */
+            if (k == 0u)
+                song.g[G_DSTYLE] = (int16_t)clamp(song.g[G_DSTYLE] + s, 0, DS_COUNT - 1);
+            else if (k < 3u)
+                song.g[G_DDENS + k - 1u] = (int16_t)clamp(song.g[G_DDENS + k - 1u] + accel(EN_K1 + k, s, 127), 0, 127);
             break;
         case LY_MIX: {
             int16_t *lv = &trk[k].p[P_LEVEL];               /* (HYPNO-1: the four synth tracks; the drums: KIT) */
@@ -977,6 +990,41 @@ static void layer_screen_draw(void)
             fmt_int(v[i], (int32_t)lv * 100 / 127);
             ratio[i] = (int32_t)lv * 1000 / 127;
         }
+        break;
+    }
+    case LY_DICE: {                                     /* the targets; the roll in force framed white */
+        static const char *const SYN[NPART] = {"acid", "bass", "melo", "atms"};
+        uint32_t cur = dice_n ? dice_hist[dice_at].target : 0xFFu;
+        col = TE_TRK[0];
+        if (dice_n) {
+            static const char HEX[] = "0123456789ABCDEF";
+            uint32_t sd = dice_hist[dice_at].seed, n;
+            str_cpy(sub, N_DSTYLE[dice_hist[dice_at].style % DS_COUNT], sizeof sub);
+            n = str_len(sub);
+            sub[n] = ' ', sub[n + 1u] = HEX[(sd >> 12) & 15u], sub[n + 2u] = HEX[(sd >> 8) & 15u];
+            sub[n + 3u] = HEX[(sd >> 4) & 15u], sub[n + 4u] = HEX[sd & 15u], sub[n + 5u] = ' ';
+            fmt_int(sub + n + 6u, (int32_t)dice_at + 1);
+            n = str_len(sub);
+            sub[n] = '/';
+            fmt_int(sub + n + 1u, dice_n);
+        } else {
+            str_cpy(sub, "roll a key  oct- oct+", sizeof sub);
+        }
+        for (i = 0; i < DT_COUNT; i++) {
+            uint16_t c = i == DT_BEAT ? TE_TRK[TRK_DRUM] : i < DT_T1 ? TE_GRP[(i - DT_KICK) % DG_COUNT] : TE_TRK[(i - DT_T1) % NPART];
+            str_cpy(tl[i].lab, i >= DT_T1 ? SYN[(i - DT_T1) % NPART] : DICE_TARGET[i], 8);
+            tl[i].bg = i == cur ? C_WHITE : TE_G1;
+            tl[i].fg = i == cur ? C_BLACK : c;
+            tl[i].top = c;
+        }
+        lab[0] = "style", lab[1] = "dens", lab[2] = "wild";
+        str_cpy(v[0], N_DSTYLE[song.g[G_DSTYLE] % DS_COUNT], 10);
+        v[0][4] = 0;
+        fmt_int(v[1], song.g[G_DDENS] * 100 / 127);
+        fmt_int(v[2], song.g[G_DWILD] * 100 / 127);
+        ratio[0] = song.g[G_DSTYLE] * 1000 / (DS_COUNT - 1);
+        ratio[1] = song.g[G_DDENS] * 1000 / 127;
+        ratio[2] = song.g[G_DWILD] * 1000 / 127;
         break;
     }
     case LY_SONG: {                                     /* A..D (playing lit, next one framed), store, modes */
