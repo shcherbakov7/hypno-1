@@ -187,8 +187,8 @@ static void steps_held_edit(uint32_t knob, int32_t s)
     uint32_t w, i;
     /* the accelerated turn once for every step held (a second call would see no time pass: x3 on the others) */
     int32_t sv = knob == 1u && !is_drum(t) ? accel(EN_K2, s, 126) : 0;
-    int32_t sk = knob == 4u ? accel(EN_PRESET, s, lock_desc(t, ui.lock_par % P_COUNT)->max -
-                                                  lock_desc(t, ui.lock_par % P_COUNT)->min) : 0;
+    int32_t sk = knob != 4u ? 0 : ui.lock_par == LP_CHANCE ? accel(EN_PRESET, s, 99) :
+                 accel(EN_PRESET, s, lock_desc(t, ui.lock_par % P_COUNT)->max - lock_desc(t, ui.lock_par % P_COUNT)->min);
     layer_undo_mark(t);
     step_pend_off &= (uint16_t)~ui.step_held;            /* (edited: kept when let go) */
     fm1_irq_off();
@@ -198,6 +198,13 @@ static void steps_held_edit(uint32_t knob, int32_t s)
             continue;
         if (knob == 3u) {                                 /* NUDGE: the whole step (drums: every lane) */
             t->micro[idx] = (int8_t)clamp(t->micro[idx] + s, MICRO_MIN, MICRO_MAX);
+            continue;
+        }
+        if (knob == 4u && ui.lock_par == LP_CHANCE) {     /* HYPNO-1 CHANCE (PRESETS): 1 .. 100 % (drums: the sound
+                                                           * picked); its condition stays */
+            uint32_t lane = is_drum(t) ? pen_lane : 0u, c = cond_get(t, idx, lane);
+            if (!cond_set(t, idx, lane, (int32_t)(c & 127u) + sk, (c >> 8) % SC_COUNT))
+                ui_message("NO LOCK LEFT");
             continue;
         }
         if (knob == 4u) {                                 /* LOCK (PRESETS): ui.lock_par on this step */
@@ -252,11 +259,11 @@ static void steps_held_edit(uint32_t knob, int32_t s)
 static void lock_par_step(int32_t s)
 {
     const track_t *t = TSEL;
-    uint32_t id = ui.lock_par % P_COUNT, guard = P_COUNT;
-    do {
-        id = (id + (uint32_t)P_COUNT + (uint32_t)(s > 0 ? 1 : -1)) % P_COUNT;
-    } while (guard-- && (!p_lockable(id) || lock_desc(t, id)->max <= lock_desc(t, id)->min ||
-                         (is_drum(t) && id > P_E0 && id <= P_E7)));
+    uint32_t id = ui.lock_par <= LP_CHANCE ? ui.lock_par : 0u, guard = P_COUNT + 1u;
+    do {                                                /* (HYPNO-1: CHANCE, LP_CHANCE, after the last one) */
+        id = (id + (uint32_t)(P_COUNT + 1) + (uint32_t)(s > 0 ? 1 : -1)) % (P_COUNT + 1u);
+    } while (guard-- && id != LP_CHANCE && (!p_lockable(id) || lock_desc(t, id)->max <= lock_desc(t, id)->min ||
+                                            (is_drum(t) && id > P_E0 && id <= P_E7)));
     ui.lock_par = (uint8_t)id;
 }
 /* OCT- with step keys held: their nudge, locks and fill condition go */
@@ -280,27 +287,70 @@ static void steps_held_clear(void)
     sync_reload = 1;
     ui_message(n ? "NUDGE, LOCKS, FILL CLEARED" : "NO NUDGE, LOCK OR FILL");
 }
-/* OCT+ with step keys held: their fill condition, round: normal -> fill only -> no fill (the first one's next) */
+/* OCT+ with step keys held: their condition, round (the first one's next): normal, fill only, no fill, then
+ * (HYPNO-1) A:B, PRE, !PRE, 1ST, !1ST. The drum track: the A:B .. of the sound picked (pen_lane), each sound its own;
+ * a step's CHANCE stays */
+#define NCOND 16u
+static const uint8_t COND_FC[NCOND] = {FC_NORM, FC_FILL, FC_NOFILL};
+static const uint8_t COND_SC[NCOND] = {SC_NONE, SC_NONE, SC_NONE, SC_1_2, SC_2_2, SC_1_4, SC_2_4, SC_3_4, SC_4_4,
+                                       SC_1_3, SC_2_3, SC_3_3, SC_PRE, SC_NPRE, SC_FIRST, SC_NFIRST};
 static void steps_held_fill(void)
 {
     track_t *t = TSEL;
     static const char *const MSG[3] = {"FILL: NORMAL", "FILL ONLY", "NO FILL"};
-    uint32_t w, v = 0, first = 1;
+    uint32_t w, v = 0, first = 1, lane = is_drum(t) ? pen_lane : 0u, full = 0;
     layer_undo_mark(t);
     step_pend_off &= (uint16_t)~ui.step_held;
     fm1_irq_off();
     for (w = 0; w < 16u; w++) {
-        uint32_t idx = ui.step_page * 16u + w;
+        uint32_t idx = ui.step_page * 16u + w, c;
         if (!((ui.step_held >> w) & 1u) || idx >= trk_len(t))
             continue;
-        if (first)
-            v = (step_fill(t, idx) + 1u) % 3u;
+        c = cond_get(t, idx, lane);
+        if (first) {                                     /* where the first one is in the round, the next */
+            uint32_t sc = (c >> 8) % SC_COUNT, f = step_fill(t, idx) % 3u;
+            for (v = 0; v < NCOND && !(COND_SC[v] == sc && (sc || COND_FC[v] == f)); v++)
+                ;
+            v = (v + 1u) % NCOND;
+        }
         first = 0;
-        step_fill_set(t, idx, v);
+        step_fill_set(t, idx, COND_FC[v]);
+        full |= !cond_set(t, idx, lane, (int32_t)(c & 127u), COND_SC[v]);
     }
     fm1_irq_on();
     sync_reload = 1;
-    ui_message(MSG[v % 3u]);
+    if (full)
+        ui_message("NO LOCK LEFT");
+    else if (COND_SC[v])
+        ui_say("COND ", SC_NAME[COND_SC[v]]);
+    else
+        ui_message(MSG[v % 3u]);
+}
+
+/* EDIT + KNOB 4 / PRESETS (HYPNO-1): the ACCUMULATOR, every pass of the loop its notes move `deg` scale degrees
+ * further, back where they were after `passes` (a new one: 4) */
+static void acc_turn(track_t *t, int32_t dd, int32_t dp)
+{
+    int32_t deg;
+    uint32_t passes;
+    char b[12];
+    acc_get(t, &deg, &passes);
+    if (!passes)
+        passes = 4;
+    fm1_irq_off();
+    if (!acc_set(t, deg + dd, (uint32_t)clamp((int32_t)passes + dp, 2, 16)))
+        ui_message("NO LOCK LEFT");
+    fm1_irq_on();
+    acc_get(t, &deg, &passes);
+    if (!deg) {
+        ui_message("ACC OFF");
+        return;
+    }
+    b[0] = deg > 0 ? '+' : '-';
+    fmt_int(b + 1, deg < 0 ? -deg : deg);
+    str_cpy(b + str_len(b), "/", 2);
+    fmt_int(b + str_len(b), (int32_t)passes);
+    ui_say("ACC ", b);
 }
 
 /* ------------------------------------------------------------- GLO --- */
@@ -336,16 +386,23 @@ static void layer_key(uint32_t layer, uint32_t k, uint32_t down)
                 step_up((uint32_t)w);
             if (layer == LY_MIX && w == 8)
                 fill_held = 0;                              /* GLO + key 9 let go: the fill ends */
+            if (layer == LY_MIX && (w == 12 || w == 13) && loop_win == (w == 12 ? 4u : 2u))
+                loop_win = 0;                               /* HYPNO-1 LOOP WINDOW: let go, the loop goes on */
         }
         return;
     }
     switch (layer) {
-    case LY_DICE:                                       /* white keys 1..9: roll the beat, a group, a synth track */
+    case LY_DICE: {                                     /* white keys 1..9: roll the beat, a group, a synth track; */
+        int32_t b = w < 0 ? punch_fx_of_key(k) - 16 : -1;   /* the black keys 1..9: MUTATE it */
         if (w >= 0 && (uint32_t)w < DT_COUNT) {
             dice_roll((uint32_t)w);
             ui.force = 1;
+        } else if (b >= 0 && (uint32_t)b < DT_COUNT) {
+            dice_mutate((uint32_t)b);
+            ui_say("MUTATE ", DICE_TARGET[b]);
         }
         return;
+    }
     case LY_STEP:
         if (w < 0) {                                    /* the first four black keys: pages 1..4 */
             static const int8_t PG[12] = {-1, 0, -1, 1, -1, 2, -1, -1, 3, -1, -1, -1};
@@ -440,6 +497,8 @@ static void layer_key(uint32_t layer, uint32_t k, uint32_t down)
             TDRUM->p[P_MUTE] = (int16_t)!TDRUM->p[P_MUTE];
         } else if (w == 11) {
             song.solo ^= (uint8_t)(1u << TRK_DRUM);
+        } else if (w == 12 || w == 13) {                   /* HYPNO-1 LOOP WINDOW while held: the beat / half of it */
+            loop_win = (uint8_t)(w == 12 ? 4u : 2u);
         } else if (w == 15) {
             tap_tempo();
         }
@@ -494,6 +553,10 @@ static void layer_knobs(uint32_t layer)
             lock_par_step(s);
         }
     }
+    if (layer == LY_ERASE && !is_drum(t) && (s = panel_enc(EN_PRESET)) != 0) {   /* the ACCUMULATOR's passes */
+        ui.layer_used = 1;
+        acc_turn(t, 0, s);
+    }
     for (k = 0; k < 4u; k++) {
         if ((s = panel_enc(EN_K1 + k)) == 0)
             continue;
@@ -518,6 +581,8 @@ static void layer_knobs(uint32_t layer)
                 pattern_length(t, s);
             else if (k == 2u)
                 pattern_transpose(t, s);
+            else if (!is_drum(t))                       /* HYPNO-1 ACCUMULATOR: degrees a pass */
+                acc_turn(t, s, 0);
             break;
         case LY_ROLL:
             if (k == 0u)
@@ -790,10 +855,24 @@ static void layer_screen_draw(void)
         if (layer == LY_ERASE && is_drum(t) && !mute && !undo.valid)
             str_cpy(sub, "black key: mute", sizeof sub);
         if (layer == LY_ERASE) {
-            lab[0] = "shift", lab[1] = "length", lab[2] = is_drum(t) ? "" : "transp";
+            lab[0] = "shift", lab[1] = "length", lab[2] = is_drum(t) ? "" : "transp", lab[3] = is_drum(t) ? "" : "acc";
             str_cpy(v[0], "<  >", 8);
             fmt_int(v[1], t->p[P_SLEN]);
             str_cpy(v[2], is_drum(t) ? "" : "-  +", 8);
+            if (!is_drum(t)) {                          /* HYPNO-1 ACCUMULATOR: "+2/4" (PRESETS: the 4) */
+                int32_t deg;
+                uint32_t passes;
+                acc_get(t, &deg, &passes);
+                if (deg) {
+                    v[3][0] = deg > 0 ? '+' : '-';
+                    fmt_int(v[3] + 1, deg < 0 ? -deg : deg);
+                    str_cpy(v[3] + str_len(v[3]), "/", 2);
+                    fmt_int(v[3] + str_len(v[3]), (int32_t)passes);
+                } else {
+                    str_cpy(v[3], "off", 8);
+                }
+                ratio[3] = (deg + 7) * 1000 / 14;
+            }
             if (!mute)
                 str_cpy(sub, undo.valid ? (undo.undone ? "oct+ redo" : "oct- undo") : sub, sizeof sub);
         } else {
@@ -883,6 +962,15 @@ static void layer_screen_draw(void)
                 }
                 ratio[3] = (m - MICRO_MIN) * 1000 / (MICRO_MAX - MICRO_MIN);
             }
+            if (ui.lock_par == LP_CHANCE) {             /* HYPNO-1: "chance 75% 1:4" */
+                uint32_t c = cond_get(t, idx, is_drum(t) ? pen_lane : 0u);
+                str_cpy(sub, "chance ", sizeof sub);
+                fmt_int(sub + 7, (int32_t)(c & 127u));
+                str_cpy(sub + str_len(sub), "% ", 3);
+                str_cpy(sub + str_len(sub), SC_NAME[(c >> 8) % SC_COUNT], 6);
+                te_lower(sub, sub, sizeof sub);
+                goto dials;
+            }
             str_cpy(sub, "lock ", sizeof sub);          /* "lock flt +12" / "lock flt --" (PRESETS, ALGORITHM) */
             str_cpy(sub + 5, lock_label(t, id), 8);
             str_cpy(sub + str_len(sub), " ", 2);
@@ -895,6 +983,7 @@ static void layer_screen_draw(void)
             } else {
                 str_cpy(sub + str_len(sub), "--", 3);
             }
+        dials:;
         } else {
             lab[1] = "div", lab[2] = "swing", lab[3] = "steps";
             str_cpy(v[1], N_SDIV[t->p[P_SDIV] % NDIV_STEP], 8);
@@ -981,6 +1070,12 @@ static void layer_screen_draw(void)
         fmt_int(tl[15].lab, song.g[G_BPM]);
         tl[15].bg = song.playing && clk_pos < BEAT_U / 4u ? C_WHITE : TE_G2;
         tl[15].fg = tl[15].bg == C_WHITE ? C_BLACK : C_WHITE;
+        str_cpy(tl[12].lab, "loop 4", 8);               /* HYPNO-1 LOOP WINDOW: keys 13, 14 held */
+        str_cpy(tl[13].lab, "loop 2", 8);
+        tl[12].bg = loop_win == 4u ? C_WHITE : TE_G1;
+        tl[12].fg = loop_win == 4u ? C_BLACK : TE_G4;
+        tl[13].bg = loop_win == 2u ? C_WHITE : TE_G1;
+        tl[13].fg = loop_win == 2u ? C_BLACK : TE_G4;
         str_cpy(tl[14].lab, "tap>", 8);
         tl[14].bg = C_BLACK;
         for (i = 0; i < 4u; i++) {

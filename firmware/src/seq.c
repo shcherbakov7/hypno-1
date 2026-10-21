@@ -797,7 +797,7 @@ static void lock_del(track_t *t, uint32_t step, uint32_t param)   /* param P_COU
 {
     uint32_t k;
     for (k = 0; k < NLOCK; k++)
-        if (t->lock[k].step == step && (param >= P_COUNT || t->lock[k].param == param))
+        if (t->lock[k].step == step && (param == P_COUNT || t->lock[k].param == param))
             t->lock[k].step = LOCK_FREE;
 }
 static int step_locked(const track_t *t, uint32_t step)   /* the step carries a lock or a nudge (the UI's mark) */
@@ -834,6 +834,140 @@ static uint32_t step_plays(const track_t *t, uint32_t idx)   /* its condition ho
 {
     uint32_t c = step_fill(t, idx);
     return c == FC_FILL ? fill_now : c == FC_NOFILL ? !fill_now : 1u;
+}
+
+/* ---- HYPNO-1 stage 4: a step's CHANCE and CONDITION, Elektron style. Kept as a lock of a pseudo parameter, so
+ * projects, slots, the autosave and the editor's backups keep it as every lock (lock_step leaves it alone):
+ * PL_COND on a synth step, PL_COND + lane on a drum lane's hit (each sound of a drum step its own). Its value: the
+ * chance in % (1..100) | the condition << 8 (SC_*). A:B plays on pass A of every B (the step's own loop: a drum
+ * lane group's length); PRE / !PRE: as the last condition on the track came out; 1ST / !1ST: the first pass
+ * after PLAY or not. FILL / NO FILL stay the fill bits (step_fill) */
+#define PL_COND 0xE0u
+#define LP_CHANCE P_COUNT                           /* ui.lock_par: the CHANCE of the steps held, not a lock (ui_layers.c) */
+#define PL_ACC 0xF0u                                /* the ACCUMULATOR (on step 0): degrees a pass (int8) | passes << 8 */
+enum { SC_NONE, SC_1_2, SC_2_2, SC_1_3, SC_2_3, SC_3_3, SC_1_4, SC_2_4, SC_3_4, SC_4_4, SC_PRE, SC_NPRE, SC_FIRST,
+       SC_NFIRST, SC_COUNT };
+static const char *const SC_NAME[SC_COUNT] = {"", "1:2", "2:2", "1:3", "2:3", "3:3", "1:4", "2:4", "3:4", "4:4",
+                                              "PRE", "!PRE", "1ST", "!1ST"};
+static const uint8_t SC_AB[SC_PRE][2] = {{0, 1}, {1, 2}, {2, 2}, {1, 3}, {2, 3}, {3, 3}, {1, 4}, {2, 4}, {3, 4}, {4, 4}};
+static int pl_pseudo(uint32_t p) { return p >= PL_COND && p <= PL_ACC; }
+static int pl_valid(uint32_t p, int32_t v)          /* a pseudo lock as cond_set / acc_set write them */
+{
+    if (p == PL_ACC)
+        return (int8_t)(v & 0xFF) >= -7 && (int8_t)(v & 0xFF) <= 7 && ((v >> 8) & 31) >= 2 && ((v >> 8) & 31) <= 16;
+    return p < PL_ACC && (v & 0xFF) >= 1 && (v & 0xFF) <= 100 && ((v >> 8) & 0xFF) < SC_COUNT;
+}
+static uint32_t cond_get(const track_t *t, uint32_t step, uint32_t lane)   /* 100 = always (no lock) */
+{
+    int k = lock_find(t, step % NSTEP, PL_COND + (lane & 15u), 0);
+    return k >= 0 ? (uint32_t)(uint16_t)t->lock[k].val : 100u;
+}
+/* 0: no lock slot left. Callers hold the IRQ off */
+static int cond_set(track_t *t, uint32_t step, uint32_t lane, int32_t chance, uint32_t cond)
+{
+    int k = lock_find(t, step % NSTEP, PL_COND + (lane & 15u), 1);
+    chance = clamp(chance, 1, 100);
+    cond %= SC_COUNT;
+    if (chance == 100 && cond == SC_NONE) {            /* always: no lock */
+        if (k >= 0 && t->lock[k].step == step % NSTEP)
+            t->lock[k].step = LOCK_FREE;
+        return 1;
+    }
+    if (k < 0)
+        return 0;
+    t->lock[k].step = (uint8_t)(step % NSTEP);
+    t->lock[k].param = (uint8_t)(PL_COND + (lane & 15u));
+    t->lock[k].val = (int16_t)(chance | (int32_t)cond << 8);
+    return 1;
+}
+static uint32_t cond_rnd = 0x13579BDFu;
+static int cond_pass(track_t *t, uint32_t v, uint32_t pass)   /* the condition v holds on this pass */
+{
+    uint32_t c = (v >> 8) % SC_COUNT, ch = v & 127u;
+    int ok = 1;
+    if (c && c < SC_PRE)
+        ok = pass % SC_AB[c][1] == SC_AB[c][0] - 1u;
+    else if (c == SC_PRE || c == SC_NPRE)
+        ok = (c == SC_PRE) == (t->cond_pre != 0);
+    else if (c == SC_FIRST || c == SC_NFIRST)
+        ok = (c == SC_FIRST) == (pass == 0u);
+    if (ok && ch < 100u) {
+        cond_rnd = cond_rnd * 1664525u + 1013904223u;
+        ok = (cond_rnd >> 16) % 100u < ch;
+    }
+    if (c != SC_PRE && c != SC_NPRE)
+        t->cond_pre = (uint8_t)ok;
+    return ok;
+}
+static int conds_any(const track_t *t)              /* the track has a CHANCE / CONDITION somewhere */
+{
+    uint32_t k;
+    for (k = 0; k < NLOCK; k++)
+        if (t->lock[k].step < NSTEP && t->lock[k].param >= PL_COND && t->lock[k].param < PL_ACC)
+            return 1;
+    return 0;
+}
+/* the ACCUMULATOR of t: degrees a pass (-7..7) and passes before it starts over (2..16); 0, 0: none */
+static void acc_get(const track_t *t, int32_t *deg, uint32_t *passes)
+{
+    int k = lock_find(t, 0, PL_ACC, 0);
+    *deg = k >= 0 ? (int8_t)(t->lock[k].val & 0xFF) : 0;
+    *passes = k >= 0 ? ((uint32_t)t->lock[k].val >> 8) & 31u : 0u;
+}
+static int acc_set(track_t *t, int32_t deg, uint32_t passes)   /* 0: no lock slot left. Callers hold the IRQ off */
+{
+    int k = lock_find(t, 0, PL_ACC, 1);
+    deg = clamp(deg, -7, 7);
+    passes = (uint32_t)clamp((int32_t)passes, 2, 16);
+    if (!deg) {
+        if (k >= 0 && t->lock[k].step == 0u && t->lock[k].param == PL_ACC)
+            t->lock[k].step = LOCK_FREE;
+        return 1;
+    }
+    if (k < 0)
+        return 0;
+    t->lock[k].step = 0;
+    t->lock[k].param = (uint8_t)PL_ACC;
+    t->lock[k].val = (int16_t)((deg & 0xFF) | (int32_t)passes << 8);
+    return 1;
+}
+/* note n moved k degrees along the track's scale (a chromatic one: semitones) */
+static uint32_t acc_note(const track_t *t, uint32_t n, int32_t k)
+{
+    uint32_t m = scale_mask(t), root = (uint32_t)t->p[P_ROOT] % 12u;
+    int32_t x = (int32_t)n, guard = 96;
+    while (k && guard--) {
+        x += k > 0 ? 1 : -1;
+        if (x < 0 || x > 127)
+            return n;
+        if ((m >> (((uint32_t)x + 12u - root) % 12u)) & 1u)
+            k += k > 0 ? -1 : 1;
+    }
+    return (uint32_t)x;
+}
+/* the step as this pass plays it: its notes moved by the ACCUMULATOR (into c), or itself */
+static const step_t *acc_step(const track_t *t, const step_t *s, step_t *c)
+{
+    uint32_t i;
+    if (!t->acc_k || s->time != ST_NOTE)
+        return s;
+    *c = *s;
+    for (i = 0; i < c->n && i < 4u; i++)
+        c->note[i] = (uint8_t)acc_note(t, c->note[i], t->acc_k);
+    return c;
+}
+/* LOOP WINDOW (GLO + key 13 / 14 held): every track repeats the loop_win steps it was in; let go, it goes on where
+ * it would have been. The grid step a track plays now (abs: the step of its grid) */
+static volatile uint8_t loop_win;
+static uint32_t loop_map(track_t *t, uint32_t abs)
+{
+    if (!loop_win) {
+        t->win_abs0 = SEQ_NONE;
+        return abs;
+    }
+    if (t->win_abs0 == SEQ_NONE || (int32_t)(abs - t->win_abs0) < 0)
+        t->win_abs0 = abs - abs % loop_win;
+    return t->win_abs0 + (abs - t->win_abs0) % loop_win;
 }
 
 static void steps_clear(track_t *t)           /* an empty pattern (synth: REST steps, drums: no lane); no lock, no nudge, no condition */
@@ -2039,7 +2173,8 @@ static void seq_ratchets(track_t *t, uint32_t into, uint32_t slen)
         return;
     }
     {
-        const step_t *s = &t->step[t->seq_idx % NSTEP];
+        step_t c;
+        const step_t *s = acc_step(t, &t->step[t->seq_idx % NSTEP], &c);
         if (s->time != ST_NOTE || !s->rat)
             return;
         for (i = 0; i < s->n; i++) {
@@ -2112,8 +2247,15 @@ static void seq_tick(track_t *t, uint32_t adv)
         /* (abs + 1 == seq_abs: SWING turned up inside a played odd step: nothing until the grid is back) */
     }
     if (fire) {                                      /* a new step: one a block at most */
+        uint32_t pabs = loop_map(t, nabs);           /* (the step it plays: LOOP WINDOW repeats a few) */
         t->seq_abs = nabs;
-        idx = nabs % len;
+        idx = pabs % len;
+        {
+            int32_t deg;
+            uint32_t passes;
+            acc_get(t, &deg, &passes);
+            t->acc_k = (int8_t)(deg && passes ? deg * (int32_t)((pabs / len) % passes) : 0);
+        }
         t->seq_idx = (uint16_t)idx;
         t->rat_done[0] = t->rat_done[1] = t->rat_done[2] = t->rat_done[3] = 0;
         t->rat_lanes = 0;
@@ -2122,6 +2264,11 @@ static void seq_tick(track_t *t, uint32_t adv)
         if (erasing(t))
             erase_playing(t);                        /* EDIT + key held: gone as it passes */
         t->seq_skip = (uint8_t)!step_plays(t, idx);
+        if (!t->seq_skip && !is_drum(t)) {           /* HYPNO-1: its CHANCE / CONDITION */
+            uint32_t v = cond_get(t, idx, 0);
+            if (v != 100u)
+                t->seq_skip = (uint8_t)!cond_pass(t, v, pabs / len);
+        }
         if (t->seq_skip) {                           /* its fill condition fails: as a REST with no lock */
             lock_step(t, NSTEP);                     /* (no step has locks there: the bases are back) */
             t->rskip_lanes = 0;
@@ -2136,10 +2283,21 @@ static void seq_tick(track_t *t, uint32_t adv)
             uint32_t skip = t->rskip_abs == nabs ? t->rskip_lanes : 0u;
             lock_step(t, idx);                       /* its parameter locks, before the block renders */
             t->rskip_lanes = 0;
-            drum_compose(t, nabs, &drum_now);        /* (each lane group on its own loop) */
+            drum_compose(t, pabs, &drum_now);        /* (each lane group on its own loop) */
+            if (conds_any(t)) {                      /* HYPNO-1: each lane's hit its CHANCE / CONDITION */
+                uint32_t l;
+                for (l = 0; l < DRUM_LANES; l++) {
+                    uint32_t ll = lane_len(t, l), v;
+                    if (!dstep_has(&drum_now, l) || (v = cond_get(t, pabs % ll, l)) == 100u)
+                        continue;
+                    if (!cond_pass(t, v, pabs / ll))
+                        dstep_clr(&drum_now, l);
+                }
+            }
             drum_step(t, &drum_now, skip);
         } else {
-            const step_t *s = &t->step[idx];
+            step_t c;
+            const step_t *s = acc_step(t, &t->step[idx], &c);   /* (the ACCUMULATOR's notes) */
             uint32_t skip = 0, i, k;
             lock_step(t, idx);
             rec_hold(t, idx, len, nabs);

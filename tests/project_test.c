@@ -456,6 +456,23 @@ int main(void)
     ok &= song.g[G_DRDLY] == 127;
     bad += check("2.5 drum DLY: kept in the byte after sel, a 2.4 project: 0, a section sets it, 200 -> 127",
                  ok && G_DRDLY == PROJ_NG && offsetof(project_t, drdly) == 8u + 2u * PROJ_NG + 1u);
+    {   /* HYPNO-1 stage 4: the CHANCE / CONDITION and ACCUMULATOR pseudo locks go with the project (parts 1..3, the
+         * drums, part 4 in its own record); a bad one (a chance of 0) is dropped on the way in */
+        int32_t d;
+        uint32_t pa;
+        cond_set(&trk[1], 4, 0, 60, SC_1_4);
+        cond_set(TDRUM, 3, 4, 100, SC_2_2);
+        cond_set(&trk[3], 7, 0, 25, SC_NONE);
+        acc_set(&trk[0], -2, 8);
+        proj_capture(&w2);
+        w2.t[2].lock[NLOCK - 1u].step = 5, w2.t[2].lock[NLOCK - 1u].param = PL_COND, w2.t[2].lock[NLOCK - 1u].val = 0;
+        host_tracks_init();
+        proj_apply(&w2, 1);
+        acc_get(&trk[0], &d, &pa);
+        ok = cond_get(&trk[1], 4, 0) == (60u | SC_1_4 << 8) && cond_get(TDRUM, 3, 4) == (100u | SC_2_2 << 8) &&
+             cond_get(&trk[3], 7, 0) == 25u && d == -2 && pa == 8u && cond_get(&trk[2], 5, 0) == 100u;
+        bad += check("HYPNO-1: CHANCE / CONDITION (synth, a drum lane, part 4) and ACCUMULATOR: capture -> apply; a bad one dropped", ok);
+    }
     {   /* 2.6: GLO > TEXTURE in the project (and in a section); a project before it: OFF; the drum channel (a setting of
          * the FM-1 now, GLO > MIDI) not taken from a project */
         song.g[G_TXSRC] = 5, song.g[G_TXLVL] = 101, song.g[G_TXTONE] = -37, song.g[G_TXMOVE] = 90;

@@ -61,6 +61,8 @@ $CC -O2 -w -Ibuild/gen -Ifirmware/src -Ifirmware/hal -o "$OUT/acid_test" tests/a
 run "HYPNO-1 stage 3: ACID (the 303): RES, ENV, ACC and its sweep, SLIDE, WAVE, limits, a sequenced line" "$OUT/acid_test"
 $CC -O2 -w -Ibuild/gen -Ifirmware/src -Ifirmware/hal -o "$OUT/dice_test" tests/dice_test.c -lm
 run "HYPNO-1 stage 4: DICE: the beat's rules in 6 styles, seeds, acid lines in the scale, tracks, history, undo" "$OUT/dice_test"
+$CC -O2 -w -Ibuild/gen -Ifirmware/src -Ifirmware/hal -o "$OUT/seq4_test" tests/seq4_test.c -lm
+run "HYPNO-1 stage 4: step CHANCE and CONDITION (synth, drum lanes), ACCUMULATOR, LOOP WINDOW, MUTATE" "$OUT/seq4_test"
 
 $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/drumkit_test" tests/drumkit_test.c -lm
 run "synthesised drum kits: every kit x sound bounded, audible, finite, levels, cost" "$OUT/drumkit_test" "$OUT/drum-kits.wav" "$OUT/drum-kits.txt"

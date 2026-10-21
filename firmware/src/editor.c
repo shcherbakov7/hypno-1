@@ -1041,12 +1041,13 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
         if (na < 1u || a[0] >= NTRK)
             return;
         t = &trk[a[0]];
-        for (i = 0; i < NLOCK; i++)
-            n += t->lock[i].step < NSTEP;
+        for (i = 0; i < NLOCK; i++)                        /* (the sound's locks: not HYPNO-1's CHANCE / CONDITION /
+                                                            * ACCUMULATOR pseudo locks, seq.c PL_*) */
+            n += t->lock[i].step < NSTEP && !pl_pseudo(t->lock[i].param);
         ed_b(a[0]);
         ed_b(n);
         for (i = 0; i < NLOCK; i++)
-            if (t->lock[i].step < NSTEP) {
+            if (t->lock[i].step < NSTEP && !pl_pseudo(t->lock[i].param)) {
                 ed_b(t->lock[i].step);
                 ed_b(t->lock[i].param);
                 ed_v(t->lock[i].val);

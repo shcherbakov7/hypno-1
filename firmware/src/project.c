@@ -626,7 +626,9 @@ static void proj_apply_tr(const project_t *p, const proj_trk_t *const tr[NTRK], 
         for (i = 0; i < NLOCK; i++) {
             const plock_t *l = &s->lock[i];
             uint32_t id = l->param;
-            if (l->step < NSTEP && id < P_COUNT && p_lockable(id)) {
+            if (l->step < NSTEP && pl_pseudo(id) && pl_valid(id, l->val)) {   /* HYPNO-1: CHANCE / CONDITION, ACCUMULATOR */
+                t->lock[i] = *l;
+            } else if (l->step < NSTEP && id < P_COUNT && p_lockable(id)) {
                 const param_desc_t *d = k == TRK_DRUM && drum_pdesc(id) ? drum_pdesc(id) :
                                         id >= P_E0 && id <= P_E7 ? &ENGINES[e]->edit[id - P_E0] : &TP[id];
                 t->lock[i].step = l->step;

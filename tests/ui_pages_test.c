@@ -1308,6 +1308,53 @@ int main(int argc, char **argv)
         song.g[G_DSTYLE] = 0;
         steps_clear(&trk[0]); go_home(); frames(4);
     }
+    {   /* HYPNO-1 stage 4, part 2: SEQ + a step held: OCT+ through the conditions, ALGORITHM to CHANCE and PRESETS its %;
+         * EDIT + KNOB 4 the ACCUMULATOR; GLO + key 13 held the LOOP WINDOW; DICE + a black key MUTATE */
+        uint32_t j, c;
+        int32_t d;
+        go_home(); frames(4);
+        song.sel = 0; steps_clear(&trk[0]); trk[0].p[P_SLEN] = 16;
+        edges_btn |= BT(B_SEQ); fm1_in.buttons |= BT(B_SEQ); frames(12);
+        fm1_in.notes = 1u << key_of_white(0); frames(3);
+        for (j = 0; j < 4u; j++) {
+            edges_btn |= BT(B_OCTUP); fm1_in.buttons |= BT(B_OCTUP); frame(); fm1_in.buttons &= ~BT(B_OCTUP); frame();
+        }
+        c = cond_get(&trk[0], 0, 0);
+        check(ui.step_held == 1u && c == (100u | SC_2_2 << 8) && !strcmp(ui.msg, "COND 2:2"),
+              "SEQ + step 1 held, OCT+ x4: fill, no fill, 1:2, 2:2 (\"COND 2:2\")");
+        for (j = 0; j < P_COUNT + 2u && ui.lock_par != LP_CHANCE; j++) { encs[panel.enc[EN_ALGO]] = 1; frame(); }
+        encs[panel.enc[EN_PRESET]] = -5; frames(2);
+        c = cond_get(&trk[0], 0, 0);
+        check(ui.lock_par == LP_CHANCE && (c & 127u) < 100u && (c & 127u) >= 1u && (c >> 8) == SC_2_2,
+              "  ALGORITHM to CHANCE, PRESETS down: the step's chance below 100 %, its condition kept");
+        ui.force = 1; frame(); ppm("layer-steps-chance");
+        check(strstr(layer_sub_shown, "chance") == layer_sub_shown && strstr(layer_sub_shown, "2:2") != 0, "  the title: \"chance NN% 2:2\"");
+        fm1_in.notes = 0; frames(3);
+        fm1_in.buttons &= ~BT(B_SEQ); frames(12);
+        edges_btn |= BT(B_EDIT); fm1_in.buttons |= BT(B_EDIT); frames(12);
+        encs[panel.enc[EN_K4]] = 1; frames(2);
+        acc_get(&trk[0], &d, &c);
+        check(d == 1 && c == 4u && !strcmp(ui.msg, "ACC +1/4"), "EDIT + KNOB 4: the ACCUMULATOR +1 degree a pass, over 4 (\"ACC +1/4\")");
+        ui.force = 1; frame(); ppm("layer-erase-acc");
+        encs[panel.enc[EN_K4]] = -1; frames(2);
+        fm1_in.buttons &= ~BT(B_EDIT); frames(12);
+        acc_get(&trk[0], &d, &c);
+        check(d == 0 && lock_find(&trk[0], 0, PL_ACC, 0) < 0, "  back to 0: off");
+        edges_btn |= BT(B_GLO); fm1_in.buttons |= BT(B_GLO); frames(12);
+        fm1_in.notes = 1u << key_of_white(12); frames(3);
+        check(loop_win == 4u, "GLO + key 13 held: the LOOP WINDOW of a beat");
+        ui.force = 1; frame(); ppm("layer-mix-loop");
+        fm1_in.notes = 0; frames(3);
+        check(loop_win == 0u, "  let go: off");
+        fm1_in.buttons &= ~BT(B_GLO); frames(12);
+        TDRUM->p[P_SLEN] = 16;
+        dice_roll(DT_BEAT);
+        edges_btn |= BT(B_ARP) | BT(B_SEQ); fm1_in.buttons |= BT(B_ARP) | BT(B_SEQ); frames(12);
+        fm1_in.notes = 1u << 1; frame(); fm1_in.notes = 0; frames(2);   /* the first black key: the beat */
+        check(!strcmp(ui.msg, "MUTATE beat"), "DICE + the first black key: MUTATE the beat");
+        fm1_in.buttons &= ~(BT(B_ARP) | BT(B_SEQ)); frames(12);
+        steps_clear(&trk[0]); steps_clear(TDRUM); go_home(); frames(4);
+    }
     {   /* fuzz: 20000 frames of random buttons (held or tapped), knobs and keys, with the audio running
          * between frames; every draw stays on the screen (lcd_blit / lcd_fill assert it) */
         uint32_t f, seed = 777, held = 0;

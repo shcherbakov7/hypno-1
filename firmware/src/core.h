@@ -261,6 +261,9 @@ typedef struct track {
     uint8_t seq_n;
     uint8_t seq_hold;            /* last step slides: keep the notes until the next step */
     uint8_t seq_skip;            /* the step playing failed its fill condition: nothing of it sounds */
+    uint8_t cond_pre;            /* HYPNO-1: the last step condition's outcome (PRE / !PRE, seq.c cond_pass) */
+    int8_t acc_k;                /* HYPNO-1 ACCUMULATOR: the scale degrees the notes move this pass (seq.c acc_step) */
+    uint32_t win_abs0;           /* HYPNO-1 LOOP WINDOW: the grid step the window starts on, SEQ_NONE = not yet */
     uint8_t slide_glide;         /* next legato note glides (slide) */
     uint32_t seq_off;            /* units to the note-off of the step's notes */
     uint8_t seq_active;          /* any step programmed */

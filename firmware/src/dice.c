@@ -327,5 +327,74 @@ static void dice_step(int32_t d)
     else if (d > 0)
         dice_roll(dice_hist[dice_at].target);
 }
+/* MUTATE (a black key in the DICE layer): the target's pattern moved a little, as much as WILD says (at least
+ * 1/8): drum hits slide a 16th or change level, a hit comes or goes (the kick's four never: only its pickup); a
+ * line's notes step a degree or two along the scale, accents and slides flip, a rest becomes the tonic. Not a new
+ * roll: one undo, the history stays */
+static void dice_mutate(uint32_t target)
+{
+    int32_t amt = song.g[G_DWILD] < 16 ? 16 : song.g[G_DWILD];
+    uint32_t i, g, l;
+    dice_salt = dice_salt * 1664525u + 1013904223u + fm1_ms;
+    dice_rng = dice_salt | 1u;
+    target %= DT_COUNT;
+    if (target < DT_T1) {
+        track_t *t = TDRUM;
+        undo_mark(t, (undo_sess += 4u) | 3u);
+        fm1_irq_off();
+        for (g = 0; g < DG_COUNT; g++) {
+            uint32_t len = dg_len(g) ? dg_len(g) : trk_len(t);
+            if (target != DT_BEAT && target != DT_KICK + g)
+                continue;
+            for (l = 0; l < DRUM_LANES; l++) {
+                if (LANE_GROUP[l] != g)
+                    continue;
+                for (i = 0; i < len; i++) {
+                    dstep_t *d = &t->dstep[i % NSTEP], *n = &t->dstep[(i + 1u) % len % NSTEP];
+                    if (l == DL_KICK && i % 4u == 0u)
+                        continue;                      /* (four to the floor) */
+                    if (!dchance(amt / 2))
+                        continue;
+                    if (dstep_has(d, l)) {
+                        if (!dstep_has(n, l) && dchance(64)) {   /* a 16th later */
+                            dstep_set(n, l, dstep_lvl(d, l), dstep_rat(d, l));
+                            dstep_clr(d, l);
+                            i++;
+                        } else {
+                            dstep_set(d, l, dstep_lvl(d, l) == LV_NORM ? LV_SOFT : LV_NORM, dstep_rat(d, l));
+                        }
+                    } else if (l != DL_KICK && dchance(amt / 4)) {
+                        dstep_set(d, l, LV_GHOST, 0);   /* a ghost comes */
+                    }
+                }
+            }
+        }
+        fm1_irq_on();
+        return;
+    }
+    {
+        track_t *t = &trk[(target - DT_T1) % NPART];
+        uint32_t root = (uint32_t)t->p[P_ROOT] % 12u, len = trk_len(t);
+        undo_mark(t, (undo_sess += 4u) | 3u);
+        fm1_irq_off();
+        for (i = 1; i < len; i++) {
+            step_t *s = &t->step[i % NSTEP];
+            if (s->time == ST_NOTE && s->n == 1u) {
+                if (dchance(amt / 2))
+                    s->note[0] = (uint8_t)acc_note(t, s->note[0], dchance(64) ? 1 + (int32_t)dr(2) : -1 - (int32_t)dr(2));
+                if (dchance(amt / 4))
+                    s->flags ^= SF_ACCENT;
+                if (dchance(amt / 5))
+                    s->flags ^= SF_SLIDE;
+            } else if (s->time == ST_REST && t->step[0].time == ST_NOTE && dchance(amt / 6)) {
+                uint8_t nt = (uint8_t)(t->step[0].note[0] - (t->step[0].note[0] + 12u - root) % 12u);   /* the tonic */
+                dice_put(s, 1, &nt, ST_NOTE, 0);
+            }
+        }
+        t->seq_active = 1;
+        fm1_irq_on();
+    }
+}
+
 /* the target a roll of the selected track means: the drum track the whole beat, a synth track its line */
 static uint32_t dice_target_sel(void) { return song.sel >= NPART ? (uint32_t)DT_BEAT : DT_T1 + song.sel; }
