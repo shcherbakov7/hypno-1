@@ -772,7 +772,7 @@ int main(int argc, char **argv)
         check(!strcmp(PT(), "EDIT 1"), "SELECT on EDIT: back to the first page");
         SEL(9);
         check(!strcmp(PT(), "VOICE 2"), "SELECT on EDIT: up to VOICE 2");
-        tap(B_SEQ); SEL(9);
+        tap(B_SEQ); tap(B_SEQ); tap(B_SEQ); SEL(9);    /* (HYPNO-1: GRID, ROLL, then STEP) */
         check(!strcmp(PT(), "PATTERN"), "SELECT on SEQ: STEP <-> PATTERN, not into the SONG screen");
         tap(B_ENV);
         check(!strcmp(PT(), "ENV"), "the button still opens its family");
@@ -1354,6 +1354,77 @@ int main(int argc, char **argv)
         check(!strcmp(ui.msg, "MUTATE beat"), "DICE + the first black key: MUTATE the beat");
         fm1_in.buttons &= ~(BT(B_ARP) | BT(B_SEQ)); frames(12);
         steps_clear(&trk[0]); steps_clear(TDRUM); go_home(); frames(4);
+    }
+    {   /* HYPNO-1 stage 5: SEQ opens GRID, again ROLL (a synth track), then STEP; GRID's knobs on the lane; ROLL's
+         * cursor, keys, knobs and rows. Pictures: screen-grid, screen-roll */
+        uint32_t j, l0, lit, x;
+        int32_t rt;
+        #define PT2() (PAGES[ui.page].title)
+        go_home(); frames(4);
+        song.sel = 0; host_preset(&trk[0], ENGI_ACID, 0);
+        TDRUM->p[P_SLEN] = 16; dg_set(DG_PERC, 13, 127);
+        dice_roll(DT_BEAT); dice_roll(DT_T1);
+        trk[0].step[3].rat = 1; trk[0].step[5].flags |= SF_ACCENT | SF_SLIDE;
+        cond_set(&trk[0], 6, 0, 50, SC_1_2);
+        cond_set(TDRUM, 2, DL_OPEN, 100, SC_1_4);
+        transport_req = 1; frames(20);
+        ui.fam_last[FAM_SEQ] = 0;                        /* (fresh: SEQ opens the family's first page) */
+        tap(B_SEQ);
+        check(!strcmp(PT2(), "GRID") && on_seq_screen(), "SEQ tapped: GRID");
+        frames(10); ui.force = 1; frame(); ppm("screen-grid");
+        for (lit = 0, x = 0; x < 240u * 140u; x++) lit += screen[40u * 240u + x] != 0;
+        check(lit > 4000u, "GRID: the eight lanes drawn");
+        for (j = 0; j < 8u; j++) lane_step(-1);         /* (to KICK) */
+        for (j = 0; j < 3u; j++) lane_step(1);          /* PERC */
+        frames(2);
+        l0 = dg_len(DG_PERC);
+        encs[panel.enc[EN_K1]] = 2; frames(2);
+        check(main_lane() == DG_PERC && dg_len(DG_PERC) == l0 + 2u, "GRID: ALGORITHM to PERC, KNOB 1 its length (13 -> 15)");
+        lane_step(1); frames(2);                        /* ACID */
+        {
+            step_t s0 = trk[0].step[0];
+            encs[panel.enc[EN_K4]] = 1; frames(2);
+            check(main_lane() == DG_COUNT && !memcmp(&trk[0].step[1], &s0, sizeof s0), "GRID: ACID, KNOB 4 rotates its pattern a step");
+            encs[panel.enc[EN_K4]] = -1; frames(2);
+        }
+        encs[panel.enc[EN_SELECT]] = 1; frames(2);
+        check(grid_page == 1u, "GRID: SELECT the next 16 steps");
+        encs[panel.enc[EN_SELECT]] = -1; frames(2);
+        tap(B_SEQ);
+        check(!strcmp(PT2(), "ROLL") && on_seq_screen() && song.seq_mode, "SEQ again: ROLL (the keys write steps)");
+        frames(10); ui.force = 1; frame(); ppm("screen-roll");
+        for (lit = 0, x = 0; x < 240u * 112u; x++) lit += screen[42u * 240u + x] != 0;
+        check(lit > 3000u, "ROLL: the notes drawn");
+        transport_req = 2; frames(10);
+        cursor_set(7); frames(2);
+        encs[panel.enc[EN_SELECT]] = 2; frames(2);
+        check(ui.cursor == 9u, "ROLL: SELECT moves the cursor (7 -> 9)");
+        steps_clear(&trk[0]); trk[0].p[P_SLEN] = 16; cursor_set(4); frames(2);
+        fm1_in.notes = 1u << key_of_white(2); frame(); fm1_in.notes = 0; frames(3);
+        check(trk[0].step[4].time == ST_NOTE && trk[0].step[4].n == 1u && ui.cursor == 5u, "ROLL: a key writes the cursor step, on to the next");
+        cursor_set(4); frames(2);
+        encs[panel.enc[EN_K1]] = 2; frames(2);
+        encs[panel.enc[EN_K2]] = 1; frames(2);
+        encs[panel.enc[EN_K3]] = 1; frames(2);
+        encs[panel.enc[EN_K4]] = 1; frames(2);
+        check(trk[0].step[5].time == ST_TIE && trk[0].step[6].time == ST_TIE && trk[0].step[7].time == ST_REST &&
+              (trk[0].step[4].flags & (SF_ACCENT | SF_SLIDE)) == (SF_ACCENT | SF_SLIDE) && (trk[0].step[4].rat & 3u) == 1u,
+              "ROLL: KNOB 1 its length (3 steps: two TIEs), 2 accent, 3 slide, 4 ratchet x2");
+        encs[panel.enc[EN_K1]] = -2; frames(2);
+        check(trk[0].step[5].time == ST_REST && trk[0].step[6].time == ST_REST, "  KNOB 1 back: one step");
+        rt = roll_low;
+        encs[panel.enc[EN_PRESET]] = 2; frames(2);
+        check(roll_low != rt && roll_low != 255u, "ROLL: PRESETS scrolls the rows");
+        roll_low = 255;
+        song.sel = TRK_DRUM; go_home(); frames(4);
+        ui.fam_last[FAM_SEQ] = 0;
+        tap(B_SEQ);
+        check(!strcmp(PT2(), "GRID"), "the drum track: SEQ from MAIN, GRID ..");
+        tap(B_SEQ);
+        check(on_drum_page(), "  .. SEQ again: the DRUMS screen (no ROLL)");
+        for (j = 0; j < 2u; j++) steps_clear(&trk[j]);
+        steps_clear(TDRUM); dg_set(DG_PERC, 0, 127); song.sel = 0; go_home(); frames(4);
+        #undef PT2
     }
     {   /* fuzz: 20000 frames of random buttons (held or tapped), knobs and keys, with the audio running
          * between frames; every draw stays on the screen (lcd_blit / lcd_fill assert it) */

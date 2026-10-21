@@ -847,3 +847,5 @@ static void rec_screen_draw(void)
         }
     }
 }
+
+#include "ui_seqscr.c"       /* HYPNO-1: GRID and ROLL, the sequencer's screens */

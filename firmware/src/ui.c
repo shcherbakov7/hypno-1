@@ -119,7 +119,7 @@ static void ui_message(const char *s) { ui_say(s, ""); }
 static void page_entered(void)
 {
     const page_t *pg = cur_page();
-    song.seq_mode = !ui.home && pg->fam == FAM_SEQ;
+    song.seq_mode = !ui.home && pg->fam == FAM_SEQ && pg->scope != SC_GRID;   /* (GRID: the keys play) */
     if (!ui.home && pg->fam == FAM_GLO && pg->id[0] == G_CH1 && song.g[G_ROUTE]) {   /* (2.6) GLO > MIDI while MIDI 2 >
                                                                                    * IN sets the channels aside */
         if (song.g[G_ROUTE] == 1)
@@ -304,10 +304,11 @@ static int page_walk(int32_t s)
     uint32_t i, fam = pg->fam, n = 0;
     int32_t cur = -1, to;
     uint8_t idx[16];
-    if (ui.home || pg->scope == SC_SONG || pg->scope == SC_DRUM)
+    if (ui.home || pg->scope == SC_SONG || pg->scope == SC_DRUM || pg->scope == SC_GRID || pg->scope == SC_ROLL)
         return 0;
     for (i = 0; i < NPAGES && n < 16u; i++) {
-        if (PAGES[i].fam != fam || PAGES[i].scope == SC_SONG || PAGES[i].scope == SC_DRUM || !page_shown(&PAGES[i]))
+        if (PAGES[i].fam != fam || PAGES[i].scope == SC_SONG || PAGES[i].scope == SC_DRUM || PAGES[i].scope >= SC_GRID ||
+            !page_shown(&PAGES[i]))
             continue;
         if (i == ui.page)
             cur = (int32_t)n;

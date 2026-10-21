@@ -527,7 +527,8 @@ static uint32_t midi_held(void) { return mi_held[0] | mi_held[1] | mi_held[2] | 
 static void midi_entry(void)                              /* (top of ui_input: every frame) */
 {
     track_t *t = TSEL;
-    int on_page = mi_ok && song.seq_mode && cur_page()->scope == SC_STEP && !is_drum(t) && !song.rec && !rec_wait && !ft_on;
+    int on_page = mi_ok && song.seq_mode && (cur_page()->scope == SC_STEP || cur_page()->scope == SC_ROLL) && !is_drum(t) &&
+                  !song.rec && !rec_wait && !ft_on;
     int rec_arm = song.rec || rec_wait || ft_on;          /* (2.6) recording, armed or a free take: on which track */
     uint32_t rec_trk = ft_on ? ft_trk % NTRK : song.sel % NTRK;
     static uint8_t rh_st, rh_trk;                         /* its hint: 0 off, 1 not said yet, 2 said (or not needed) */
@@ -672,8 +673,12 @@ static void layer_tap(uint32_t layer)
             ui.force = 1;
             break;
         }
-        if (!ui.home && cur_page()->scope == SC_TRK && is_drum(TSEL)) {
-            studio_open(SC_DRUM);
+        if (!ui.home && cur_page()->scope == SC_GRID && is_drum(TSEL) && layer == LY_STEP) {
+            studio_open(SC_DRUM);                         /* HYPNO-1: GRID on a drum lane, SEQ again: the DRUMS screen */
+            break;
+        }
+        if (!ui.home && cur_page()->scope == SC_TRK && is_drum(TSEL) && layer == LY_ERASE) {
+            studio_open(SC_DRUM);                         /* (SEQ from MAIN: GRID, the SEQ family's first page) */
             break;
         }
         if (layer == LY_ERASE && song.seq_mode && cur_page()->scope == SC_STEP && !is_drum(TSEL)) {
@@ -1040,6 +1045,11 @@ static void ui_input(void)
     if (on_drum_page()) {
         drum_screen_input(pressed, home);
         return;
+    }
+    if (on_seq_screen()) {                              /* HYPNO-1 GRID, ROLL (ui_seqscr.c): their knobs; the rest below */
+        seq_screen_input();
+        if (on_seq_screen() && cur_page()->scope == SC_ROLL && song.seq_mode)
+            seq_entry(notes);                           /* (the keys write the cursor step, as on STEP) */
     }
 #endif
     if (home == BT_TAP) {                               /* HOME acts on release: a hold opens the menu */

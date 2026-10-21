@@ -1067,6 +1067,12 @@ static void ui_draw(void)
         ui.force = 0;
         return;
     }
+    if (on_seq_screen()) {                              /* HYPNO-1 GRID, ROLL */
+        seq_screen_draw();
+        ui_timers();
+        ui.force = 0;
+        return;
+    }
     cursor_fix();
     if (ui.force)
         draw_frame();
